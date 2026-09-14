@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>ActLog | IT Support Activity Logger</title>
+    <meta
+      name="description"
+      content="Aplikasi pencatat aktivitas kerja IT Support dengan autentikasi Firebase dan riwayat activity feed."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./icon-192.svg" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div id="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">A</div>
+          <div>
+            <strong>ActLog</strong>
+            <small>IT Support</small>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" type="button" data-view="dashboard">
+            <span>Dashboard</span>
+          </button>
+          <button class="nav-item" type="button" data-view="history">
+            <span>Riwayat</span>
+          </button>
+          <button class="nav-item" type="button" data-view="profile">
+            <span>Profil</span>
+          </button>
+        </nav>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Aplikasi kerja</p>
+            <h1 id="page-title">Dashboard</h1>
+          </div>
+          <div class="user-pill" id="topbar-user">Belum masuk</div>
+        </header>
+
+        <section id="loading-view" class="view-panel active" aria-label="Memuat aplikasi">
+          <div class="loading-card">
+            <div class="spinner" aria-hidden="true"></div>
+            <h2>Memuat aplikasi...</h2>
+          </div>
+        </section>
+
+        <section id="auth-view" class="view-panel hidden" aria-label="Autentikasi pengguna">
+          <div class="auth-card">
+            <div class="auth-header">
+              <div class="auth-brandmark">A</div>
+              <div>
+                <h2>Masuk ke ActLog</h2>
+                <p>Catat pekerjaan IT secara real-time.</p>
+              </div>
+            </div>
+
+            <div class="auth-tabs" role="tablist" aria-label="Mode autentikasi">
+              <button class="tab-btn active" type="button" data-auth-tab="login">Masuk</button>
+              <button class="tab-btn" type="button" data-auth-tab="register">Daftar</button>
+            </div>
+
+            <form id="login-form" class="auth-form">
+              <label>
+                <span>Email</span>
+                <input type="email" id="login-email" placeholder="nama@domain.com" required />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input type="password" id="login-password" placeholder="Password" required />
+              </label>
+
+              <button class="primary-btn full-width" type="submit">Masuk</button>
+            </form>
+
+            <form id="register-form" class="auth-form hidden">
+              <label>
+                <span>Email</span>
+                <input type="email" id="register-email" placeholder="nama@domain.com" required />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input type="password" id="register-password" placeholder="Minimal 6 karakter" minlength="6" required />
+              </label>
+
+              <button class="primary-btn full-width" type="submit">Daftar</button>
+            </form>
+
+            <button id="forgot-password-btn" class="text-button" type="button">
+              Lupa password?
+            </button>
+          </div>
+        </section>
+
+        <section id="dashboard-view" class="view-panel hidden" aria-label="Dashboard aktivitas">
+          <div class="quick-actions">
+            <button
+              id="start-activity-btn"
+              class="primary-btn start-activity-fab"
+              type="button"
+              aria-label="Mulai Aktivitas"
+              title="Mulai Aktivitas"
+            >
+              <span class="start-activity-icon" aria-hidden="true">+</span>
+              <span class="start-activity-button-text">Mulai Aktivitas</span>
+            </button>
+            <span class="start-activity-label">Mulai Aktivitas</span>
+          </div>
+
+          <div id="empty-active-state" class="empty-state">
+            Belum ada aktivitas yang sedang berlangsung.
+          </div>
+
+          <div id="active-activity-card" class="card hidden" aria-live="polite">
+            <div class="status-row">
+              <span id="status-badge" class="status-badge ongoing">Sedang Berlangsung</span>
+              <span id="activity-timer" class="timer">00:00:00</span>
+            </div>
+
+            <form id="activity-form" class="activity-form">
+              <div class="field-grid two-column">
+                <label>
+                  <span>Kode Inventaris PC/Laptop</span>
+                  <input id="inventory-code" type="text" maxlength="50" placeholder="Contoh: PC24059MEB" />
+                </label>
+
+                <label>
+                  <span>Nama User</span>
+                  <input id="user-name" type="text" maxlength="80" placeholder="Nama user" />
+                </label>
+              </div>
+
+              <div class="field-grid two-column">
+                <label>
+                  <span>Lokasi</span>
+                  <select id="activity-location"></select>
+                </label>
+
+                <div>
+                  <span class="work-code-label">Kode Pengerjaan</span>
+                  <div id="work-code-options" class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
+                  <input id="activity-work-code" type="hidden" value="HW" />
+                </div>
+              </div>
+
+              <div id="custom-location-wrap" class="hidden">
+                <label>
+                  <span>Lokasi Lain</span>
+                  <input id="custom-location-input" type="text" maxlength="80" placeholder="Isi lokasi manual" />
+                </label>
+              </div>
+
+              <label>
+                <span>Keterangan / Remarks</span>
+                <textarea id="activity-remarks" rows="4" placeholder="Opsional..."></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button class="primary-btn" type="submit">Simpan Detail</button>
+                <button id="end-activity-btn" class="danger-btn" type="button">Akhiri Service</button>
+              </div>
+            </form>
+
+            <div id="cancel-activity-control" class="cancel-activity-control hidden">
+              <button
+                id="cancel-activity-btn"
+                class="secondary-btn cancel-activity-btn"
+                type="button"
+                aria-label="Cancel Aktivitas"
+                title="Cancel Aktivitas"
+              >
+                <svg class="cancel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+              <span class="cancel-activity-label">Cancel Aktivitas</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="history-view" class="view-panel hidden" aria-label="Riwayat aktivitas">
+          <div class="toolbar card">
+            <div class="toolbar-header">
+              <span class="toolbar-title">Filter Riwayat</span>
+              <button id="history-filter-toggle" class="icon-button history-filter-toggle" type="button" aria-expanded="false" aria-controls="history-filter-panel" aria-label="Buka filter riwayat" title="Filter riwayat">
+                <span class="filter-active-indicator" aria-hidden="true"></span>
+                <span aria-hidden="true">⋮</span>
+              </button>
+            </div>
+
+            <div id="history-filter-panel" class="history-filter-panel" hidden>
+              <input id="search-input" type="search" placeholder="Cari nama user atau kode inventaris..." />
+              <div class="toolbar-grid">
+                <select id="filter-location">
+                  <option value="all">Semua Lokasi</option>
+                </select>
+
+                <select id="filter-workcode">
+                  <option value="all">Semua Kode</option>
+                </select>
+
+                <input id="filter-date" type="date" />
+
+                <select id="filter-status">
+                  <option value="all">Semua Status</option>
+                  <option value="completed">Selesai</option>
+                </select>
+              </div>
+              <div class="filter-panel-actions">
+                <button id="history-filter-reset" class="secondary-btn" type="button">Reset</button>
+                <button id="history-filter-apply" class="primary-btn" type="button">Terapkan</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="history-list" class="feed-list" aria-live="polite"></div>
+        </section>
+
+        <section id="profile-view" class="view-panel hidden" aria-label="Profil pengguna">
+          <div class="card profile-card">
+            <div class="avatar" id="profile-avatar">U</div>
+            <p class="profile-label">Nama User</p>
+            <div class="profile-name-row">
+              <h3 id="profile-name">User</h3>
+              <button
+                id="edit-name-btn"
+                class="icon-button edit-name-button"
+                type="button"
+                aria-label="Ubah nama user"
+                title="Ubah nama user"
+              >
+                <svg class="edit-name-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+                </svg>
+              </button>
+            </div>
+            <p id="profile-email">user@email.com</p>
+            <button id="logout-btn" class="secondary-btn" type="button">Logout</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Navigasi mobile">
+      <button class="bottom-nav-item active" type="button" data-view="dashboard">Dashboard</button>
+      <button class="bottom-nav-item" type="button" data-view="history">Riwayat</button>
+      <button class="bottom-nav-item" type="button" data-view="profile">Profil</button>
+    </nav>
+
+    <div id="confirm-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card">
+        <h3>Konfirmasi</h3>
+        <p>Apakah Anda yakin ingin mengakhiri service ini?</p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="secondary-btn" type="button">Batal</button>
+          <button id="confirm-end" class="danger-btn" type="button">Akhiri Service</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="delete-confirm-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card">
+        <h3>Hapus Aktivitas?</h3>
+        <p>Apakah Anda yakin ingin menghapus aktivitas ini? Data yang sudah dihapus tidak dapat dikembalikan.</p>
+        <div class="modal-actions">
+          <button id="delete-cancel" class="secondary-btn" type="button">Batal</button>
+          <button id="delete-confirm" class="danger-btn" type="button">Hapus</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cancel-confirm-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card">
+        <h3>Batalkan Aktivitas?</h3>
+        <p>Batalkan aktivitas ini? Aktivitas yang dibatalkan tidak akan masuk ke riwayat.</p>
+        <div class="modal-actions">
+          <button id="cancel-activity-dismiss" class="secondary-btn" type="button">Batal</button>
+          <button id="cancel-activity-confirm" class="danger-btn" type="button">Ya, Batalkan</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="edit-name-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card">
+        <h3>Ubah Nama User</h3>
+        <form id="edit-name-form" class="auth-form">
+          <label>
+            <span>Nama</span>
+            <input id="edit-name-input" type="text" maxlength="80" autocomplete="name" required />
+          </label>
+          <div class="modal-actions">
+            <button id="edit-name-cancel" class="secondary-btn" type="button">Batal</button>
+            <button id="edit-name-save" class="primary-btn" type="submit">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" aria-live="assertive"></div>
+  </body>
+</html>

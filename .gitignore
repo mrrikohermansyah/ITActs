@@ -1,0 +1,10 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local config secrets
+*.local
+
+# GitHub Pages generated content
+CNAME

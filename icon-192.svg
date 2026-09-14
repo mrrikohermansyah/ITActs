@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="ActLog">
+  <rect width="192" height="192" rx="42" fill="#2563eb"/>
+  <rect x="28" y="28" width="136" height="136" rx="30" fill="#1d4ed8"/>
+  <path d="M96 48 54 140h24l8-20h40l8 20h24L116 48H96Zm-2 50 12 0 8 20H86l8-20Z" fill="#fff"/>
+</svg>
