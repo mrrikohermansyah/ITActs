@@ -21,6 +21,7 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="./icon-192.svg" />
     <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" crossorigin="anonymous"></script>
     <script type="module" src="./app.js"></script>
   </head>
   <body>
@@ -113,7 +114,10 @@
         </section>
 
         <section id="dashboard-view" class="view-panel hidden" aria-label="Dashboard aktivitas">
-          <div class="quick-actions">
+          <div class="quick-actions activity-ui-loading" aria-busy="true">
+            <div id="empty-active-state" class="empty-state">
+              Belum ada aktivitas yang sedang berlangsung.
+            </div>
             <button
               id="start-activity-btn"
               class="primary-btn start-activity-fab"
@@ -125,10 +129,9 @@
               <span class="start-activity-button-text">Mulai Aktivitas</span>
             </button>
             <span class="start-activity-label">Mulai Aktivitas</span>
-          </div>
-
-          <div id="empty-active-state" class="empty-state">
-            Belum ada aktivitas yang sedang berlangsung.
+            <span id="activity-load-error" class="activity-load-error hidden" role="alert">
+              Aktivitas gagal dimuat. Silakan refresh halaman.
+            </span>
           </div>
 
           <div id="active-activity-card" class="card hidden" aria-live="polite">
@@ -172,7 +175,7 @@
 
               <label>
                 <span>Keterangan / Remarks</span>
-                <textarea id="activity-remarks" rows="4" placeholder="Opsional..."></textarea>
+                <textarea id="activity-remarks" rows="4" maxlength="2000" placeholder="Opsional..."></textarea>
               </label>
 
               <div class="form-actions">
@@ -202,10 +205,15 @@
           <div class="toolbar card">
             <div class="toolbar-header">
               <span class="toolbar-title">Filter Riwayat</span>
-              <button id="history-filter-toggle" class="icon-button history-filter-toggle" type="button" aria-expanded="false" aria-controls="history-filter-panel" aria-label="Buka filter riwayat" title="Filter riwayat">
+              <button id="history-filter-toggle" class="icon-button history-filter-toggle" type="button" aria-expanded="false" aria-controls="history-menu-panel" aria-label="Buka menu riwayat" title="Menu riwayat">
                 <span class="filter-active-indicator" aria-hidden="true"></span>
                 <span aria-hidden="true">⋮</span>
               </button>
+            </div>
+
+            <div id="history-menu-panel" class="history-menu-panel" hidden>
+              <button id="history-menu-filter" class="history-menu-option" type="button">Filter Riwayat</button>
+              <button id="history-export-btn" class="history-menu-option" type="button">Export Report Excel <span aria-hidden="true">📊</span></button>
             </div>
 
             <div id="history-filter-panel" class="history-filter-panel" hidden>

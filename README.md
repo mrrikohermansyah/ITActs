@@ -78,24 +78,66 @@ export const firebaseConfig = {
 
 ## Firestore Security Rules
 
-File `firestore.rules` berisi contoh keamanan dasar:
+File `firestore.rules` membatasi akses ke dokumen milik user yang sedang login,
+mengunci `userId` dan `startedAt`, membatasi field/type/ukuran data, serta hanya
+mengizinkan transisi status dari `ongoing` ke `completed` atau `cancelled`:
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /activities/{activityId} {
-      allow create: if request.auth != null
-        && request.resource.data.userId == request.auth.uid;
+    function signedIn() {
+      return request.auth != null;
+    }
 
-      allow read: if request.auth != null
+    function validActivity(data) {
+      return data.keys().hasOnly([
+          'userId', 'inventoryCode', 'userName', 'location', 'workCode',
+          'remarks', 'startedAt', 'endedAt', 'durationMinutes', 'status'
+        ])
+        && data.userId is string
+        && data.userId == request.auth.uid
+        && data.inventoryCode is string && data.inventoryCode.size() <= 50
+        && data.userName is string && data.userName.size() <= 80
+        && data.location is string && data.location.size() <= 80
+        && data.workCode is string && data.workCode.size() <= 32
+        && data.remarks is string && data.remarks.size() <= 2000
+        && data.startedAt is timestamp
+        && (data.endedAt == null || data.endedAt is timestamp)
+        && (data.durationMinutes == null
+          || (data.durationMinutes is int && data.durationMinutes >= 0))
+        && data.status in ['ongoing', 'completed', 'cancelled'];
+    }
+
+    match /activities/{activityId} {
+      allow create: if signedIn()
+        && validActivity(request.resource.data)
+        && request.resource.data.status == 'ongoing'
+        && request.resource.data.endedAt == null
+        && request.resource.data.durationMinutes == null;
+
+      allow get, list: if signedIn()
         && resource.data.userId == request.auth.uid;
 
-      allow update: if request.auth != null
+      allow update: if signedIn()
         && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid;
+        && validActivity(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.startedAt == resource.data.startedAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'inventoryCode', 'userName', 'location', 'workCode', 'remarks',
+          'endedAt', 'durationMinutes', 'status'
+        ])
+        && ((resource.data.status == 'ongoing'
+          && (request.resource.data.status == resource.data.status
+            || request.resource.data.status in ['completed', 'cancelled']))
+          || (resource.data.status in ['completed', 'cancelled']
+            && request.resource.data.diff(resource.data).affectedKeys().size() == 0))
+        && (request.resource.data.status == 'ongoing'
+          || (request.resource.data.endedAt is timestamp
+            && request.resource.data.durationMinutes is int));
 
-      allow delete: if request.auth != null
+      allow delete: if signedIn()
         && resource.data.userId == request.auth.uid;
     }
   }

@@ -8,6 +8,7 @@ const state = {
   activeActivity: null,
   activities: [],
   unsubscribeActivities: null,
+  activityListenerGeneration: 0,
   currentView: 'loading',
   authReady: false
 };
@@ -55,6 +56,9 @@ const ui = {
   filterDate: document.querySelector('#filter-date'),
   filterStatus: document.querySelector('#filter-status'),
   historyFilterToggle: document.querySelector('#history-filter-toggle'),
+  historyMenuPanel: document.querySelector('#history-menu-panel'),
+  historyMenuFilter: document.querySelector('#history-menu-filter'),
+  historyExportBtn: document.querySelector('#history-export-btn'),
   historyFilterPanel: document.querySelector('#history-filter-panel'),
   historyFilterReset: document.querySelector('#history-filter-reset'),
   historyFilterApply: document.querySelector('#history-filter-apply'),
@@ -192,39 +196,42 @@ function setView(viewName) {
 }
 
 function initSelectOptions() {
-  const buildOptions = (arr, placeholderText) => {
-    return arr
-      .map((item) => {
-        const value = typeof item === 'string' ? item : item.code;
-        const label = typeof item === 'string' ? item : item.label || item.code;
-        return `<option value="${value}">${label}</option>`;
-      })
-      .join('');
+  const populateSelect = (select, options, firstOption) => {
+    select.replaceChildren();
+
+    if (firstOption) {
+      select.add(new Option(firstOption.label, firstOption.value));
+    }
+
+    options.forEach((item) => {
+      const value = typeof item === 'string' ? item : item.code;
+      const label = typeof item === 'string' ? item : item.label || item.code;
+      select.add(new Option(label, value));
+    });
   };
 
-  ui.activityLocation.innerHTML = buildOptions(LOCATION_OPTIONS, 'Pilih lokasi');
-  ui.filterLocation.innerHTML = '<option value="all">Semua Lokasi</option>' + buildOptions(LOCATION_OPTIONS, 'Pilih lokasi');
-  ui.filterWorkCode.innerHTML = '<option value="all">Semua Kode</option>' + buildOptions(WORK_CODES, 'Pilih kode');
+  populateSelect(ui.activityLocation, LOCATION_OPTIONS);
+  populateSelect(ui.filterLocation, LOCATION_OPTIONS, { value: 'all', label: 'Semua Lokasi' });
+  populateSelect(ui.filterWorkCode, WORK_CODES, { value: 'all', label: 'Semua Kode' });
   renderWorkCodeButtons();
 }
 
 function renderWorkCodeButtons() {
   const selectedCodes = normalizeWorkCodes(ui.activityWorkCode.value);
 
-  ui.workCodeOptions.innerHTML = WORK_CODES.map((item) => {
+  ui.workCodeOptions.replaceChildren();
+
+  WORK_CODES.forEach((item) => {
     const code = item.code;
     const isActive = selectedCodes.includes(code);
-    return `
-      <button
-        type="button"
-        class="work-code-option ${isActive ? 'active' : ''}"
-        data-work-code="${code}"
-        aria-pressed="${isActive}"
-      >
-        ${code}
-      </button>
-    `;
-  }).join('');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `work-code-option${isActive ? ' active' : ''}`;
+    button.dataset.workCode = code;
+    button.setAttribute('aria-pressed', String(isActive));
+    button.textContent = code;
+    ui.workCodeOptions.append(button);
+  });
 
   ui.workCodeOptions.querySelectorAll('.work-code-option').forEach((button) => {
     button.addEventListener('click', () => {
@@ -418,6 +425,24 @@ function renderActiveActivity() {
   }
 }
 
+function setActivityUiLoading(isLoading) {
+  ui.quickActions.classList.toggle('activity-ui-loading', isLoading);
+  ui.quickActions.classList.remove('activity-ui-error');
+  ui.quickActions.setAttribute('aria-busy', String(isLoading));
+  ui.startActivityBtn.disabled = isLoading;
+}
+
+function renderActivityLoadError() {
+  state.activeActivity = null;
+  ui.quickActions.classList.remove('activity-ui-loading');
+  ui.quickActions.classList.add('activity-ui-error');
+  ui.quickActions.setAttribute('aria-busy', 'false');
+  ui.startActivityBtn.disabled = true;
+  ui.activeActivityCard.classList.add('hidden');
+  ui.emptyActiveState.classList.add('hidden');
+  ui.cancelActivityControl.classList.add('hidden');
+}
+
 function startTimer() {
   if (activeTimerLoop) {
     clearInterval(activeTimerLoop);
@@ -469,32 +494,82 @@ function updateHistoryFilterIndicator() {
   ui.filterActiveIndicator.setAttribute('aria-hidden', String(!isActive));
 }
 
-function setHistoryFilterPanelOpen(isOpen) {
+function setHistoryMenuPanelOpen(isOpen) {
   ui.historyFilterToggle.setAttribute('aria-expanded', String(isOpen));
-  ui.historyFilterToggle.setAttribute('aria-label', isOpen ? 'Tutup filter riwayat' : 'Buka filter riwayat');
-
-  if (isOpen) {
-    ui.historyFilterPanel.hidden = false;
-    ui.historyFilterPanel.classList.add('is-open');
-  } else {
-    ui.historyFilterPanel.classList.remove('is-open');
-    window.setTimeout(() => {
-      if (ui.historyFilterToggle.getAttribute('aria-expanded') === 'false') {
-        ui.historyFilterPanel.hidden = true;
-      }
-    }, 180);
-  }
+  ui.historyFilterToggle.setAttribute('aria-label', isOpen ? 'Tutup menu riwayat' : 'Buka menu riwayat');
+  ui.historyMenuPanel.hidden = !isOpen;
 }
 
-function renderHistory() {
-  updateHistoryFilterIndicator();
+function setHistoryFilterPanelOpen(isOpen) {
+  ui.historyFilterPanel.hidden = !isOpen;
+  ui.historyFilterPanel.classList.toggle('is-open', isOpen);
+}
+
+function closeHistoryPanels() {
+  setHistoryMenuPanelOpen(false);
+  setHistoryFilterPanelOpen(false);
+}
+
+function isExcelJSAvailable() {
+  return Boolean(
+    window.ExcelJS &&
+    typeof window.ExcelJS.Workbook === 'function'
+  );
+}
+
+function loadExcelJS() {
+  if (isExcelJSAvailable()) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const existingScript = document.querySelector('script[data-exceljs-loader="true"]');
+
+    if (existingScript) {
+      existingScript.addEventListener('load', () => {
+        if (isExcelJSAvailable()) {
+          resolve();
+          return;
+        }
+        reject(new Error('ExcelJS loaded but Workbook is missing.'));
+      }, { once: true });
+
+      existingScript.addEventListener('error', () => {
+        reject(new Error('ExcelJS CDN gagal dimuat.'));
+      }, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.setAttribute('data-exceljs-loader', 'true');
+
+    script.addEventListener('load', () => {
+      if (isExcelJSAvailable()) {
+        resolve();
+        return;
+      }
+      reject(new Error('ExcelJS loaded but Workbook is missing.'));
+    }, { once: true });
+
+    script.addEventListener('error', () => {
+      reject(new Error('ExcelJS CDN gagal dimuat.'));
+    }, { once: true });
+
+    document.head.appendChild(script);
+  });
+}
+
+function getFilteredHistoryData() {
   const searchText = ui.searchInput.value.trim().toLowerCase();
   const locationFilter = ui.filterLocation.value;
   const workFilter = ui.filterWorkCode.value;
   const dateFilter = ui.filterDate.value;
   const statusFilter = ui.filterStatus.value;
 
-  const filtered = state.activities.filter((item) => {
+  return state.activities.filter((item) => {
     if (item.status !== 'completed') {
       return false;
     }
@@ -513,6 +588,11 @@ function renderHistory() {
 
     return matchesSearch && matchesLocation && matchesWork && matchesDate && matchesStatus;
   });
+}
+
+function renderHistory() {
+  updateHistoryFilterIndicator();
+  const filtered = getFilteredHistoryData();
 
   if (!filtered.length) {
     openSwipeActivityId = null;
@@ -528,9 +608,6 @@ function renderHistory() {
       const durationText = item.durationMinutes ?? 0;
       const displayedUserName = item.userName || 'User';
 
-      console.log('[History] Activity data:', item);
-      console.log('[History] Nama yang ditampilkan:', displayedUserName);
-
       return `
         <article class="swipe-item" data-activity-id="${escapeHtml(item.id)}">
           <button class="swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}">
@@ -544,14 +621,14 @@ function renderHistory() {
                 <h3>${escapeHtml(displayedUserName)}</h3>
                 <p>${formatDateTime(startedAt)}${endedAt ? ' - ' + formatDateTime(endedAt) : ''}</p>
               </div>
-              <span class="work-badge ${workCode.toLowerCase()}">${workCode}</span>
+              <span class="work-badge ${escapeHtml(String(workCode).toLowerCase())}">${escapeHtml(workCode)}</span>
             </div>
 
             <div class="feed-body">
               <div class="meta-grid">
                 <span><strong>Inventaris:</strong> ${escapeHtml(item.inventoryCode || '-')}</span>
                 <span><strong>Lokasi:</strong> ${escapeHtml(item.location || '-')}</span>
-                <span><strong>Durasi:</strong> ${durationText} menit</span>
+                <span><strong>Durasi:</strong> ${escapeHtml(durationText)} menit</span>
                 <span><strong>Status:</strong> ${item.status === 'ongoing' ? 'Berlangsung' : item.status === 'cancelled' ? 'Dibatalkan' : 'Selesai'}</span>
               </div>
               <p class="remarks">${escapeHtml(item.remarks || 'Tidak ada keterangan.')}</p>
@@ -775,6 +852,713 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
+function formatDuration(minutes) {
+  const totalMinutes = Number(minutes || 0);
+
+  if (!Number.isFinite(totalMinutes) || totalMinutes < 0) {
+    return '';
+  }
+
+  const roundedMinutes = Math.max(0, Math.round(totalMinutes));
+
+  if (roundedMinutes === 1) {
+    return '1 Minute';
+  }
+
+  return `${roundedMinutes} Minutes`;
+}
+
+function getExportCodeValue(item) {
+  const legacyValue = item?.kode_pekerjaan ?? item?.workCode ?? item?.work_code ?? '';
+
+  if (Array.isArray(legacyValue)) {
+    return legacyValue
+      .filter((part) => typeof part === 'string' && part.trim())
+      .map((part) => part.trim())
+      .join(' & ');
+  }
+
+  if (typeof legacyValue === 'string') {
+    return legacyValue
+      .split('&')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' & ');
+  }
+
+  return '';
+}
+
+function getExportRows() {
+  return getFilteredHistoryData().map((item) => {
+    const startDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
+    const exportDate = Number.isNaN(startDate.getTime()) ? null : startDate;
+    const durationMinutes = item.durationMinutes ?? null;
+    const durationValue = durationMinutes != null ? formatDuration(durationMinutes) : '';
+    const remarks = String(item.remarks || '');
+    const quality = item.quality || 'Finish';
+
+    return [
+      exportDate,
+      item.inventoryCode || '',
+      getExportCodeValue(item),
+      'Bintan / ' + (item.location || ''),
+      remarks,
+      item.userName || '',
+      durationValue,
+      quality
+    ];
+  });
+}
+
+function getExportPeriodLabel() {
+  const activeDate = ui.filterDate.value;
+  if (activeDate) {
+    const date = new Date(`${activeDate}T00:00:00`);
+    if (!Number.isNaN(date.getTime())) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+  }
+
+  const filtered = getFilteredHistoryData();
+  if (!filtered.length) {
+    return '';
+  }
+
+  const sortedDates = filtered
+    .map((item) => item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => a - b);
+
+  if (!sortedDates.length) {
+    return '';
+  }
+
+  const start = sortedDates[0];
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getTemplateWorkbookCandidates() {
+  const candidates = [
+    './templates/DAILY REPORT_Tamplates.xlsx',
+  ];
+
+  return [...new Set(candidates)];
+}
+
+async function loadTemplateWorkbook() {
+  if (!isExcelJSAvailable()) {
+    return null;
+  }
+
+  for (const templatePath of getTemplateWorkbookCandidates()) {
+    try {
+      const response = await fetch(templatePath, { cache: 'no-store' });
+      if (!response.ok) {
+        continue;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = new window.ExcelJS.Workbook();
+      await workbook.xlsx.load(arrayBuffer);
+      return workbook;
+    } catch (error) {
+      console.warn('[Export] Template not available at path:', templatePath, error);
+    }
+  }
+
+  return null;
+}
+
+function resolveTemplateWorksheet(workbook) {
+  if (!workbook) {
+    return null;
+  }
+
+  const candidates = ['2026-9', '2026-9 ', '2026-9\t', '2026-9\r'];
+  return workbook.getWorksheet(candidates.find((name) => workbook.getWorksheet(name)))
+    || workbook.worksheets?.[workbook.worksheets.length - 1]
+    || null;
+}
+
+function applyExportCellAlignment(cell, columnIndex) {
+  const currentAlignment = cell.alignment || {};
+
+  if (columnIndex === 0) {
+    cell.alignment = {
+      ...currentAlignment,
+      horizontal: 'right',
+      vertical: currentAlignment.vertical || 'top'
+    };
+    return;
+  }
+
+  if (columnIndex === 2 || columnIndex === 6 || columnIndex === 7) {
+    cell.alignment = {
+      ...currentAlignment,
+      horizontal: 'center',
+      vertical: currentAlignment.vertical || 'top'
+    };
+    return;
+  }
+
+  if (columnIndex === 4) {
+    cell.alignment = {
+      ...currentAlignment,
+      wrapText: false,
+      horizontal: currentAlignment.horizontal || 'left',
+      vertical: currentAlignment.vertical || 'top'
+    };
+    return;
+  }
+
+  cell.alignment = {
+    ...currentAlignment,
+    vertical: currentAlignment.vertical || 'top'
+  };
+}
+
+function normalizeExportHeader(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function findExportHeaderColumns(worksheet) {
+  const expectedHeaders = {
+    date: normalizeExportHeader('Tgl. / Date'),
+    inventory: normalizeExportHeader('Kode Inv. (uraian) / Inv. Code ( Description)'),
+    code: normalizeExportHeader('Kode / Code'),
+    location: normalizeExportHeader('Lokasi / Location'),
+    remarks: normalizeExportHeader('Keterangan / Remarks'),
+    user: normalizeExportHeader('Pengguna / User'),
+    duration: normalizeExportHeader('Durasi / Duration'),
+    quality: normalizeExportHeader('Kendali Mutu / Quality Assurance')
+  };
+  let headerRowNumber = null;
+  const columns = {};
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (headerRowNumber !== null) {
+      return;
+    }
+
+    row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
+      const header = normalizeExportHeader(cell.text || cell.value);
+
+      Object.entries(expectedHeaders).forEach(([key, expectedHeader]) => {
+        if (header === expectedHeader || header.startsWith(`${expectedHeader} `)) {
+          columns[key] = columnNumber;
+        }
+      });
+    });
+
+    if (columns.date && columns.code && columns.quality) {
+      headerRowNumber = rowNumber;
+    }
+  });
+
+  if (!headerRowNumber) {
+    return null;
+  }
+
+  return { headerRowNumber, columns };
+}
+
+function snapshotProtectedTemplateColumns(worksheet) {
+  const protectedColumns = [];
+  const lastRowNumber = worksheet.lastRow?.number || 0;
+
+  for (let rowNumber = 1; rowNumber <= lastRowNumber; rowNumber += 1) {
+    for (let columnNumber = 16; columnNumber <= 23; columnNumber += 1) {
+      const cell = worksheet.getCell(rowNumber, columnNumber);
+      protectedColumns.push({
+        rowNumber,
+        columnNumber,
+        value: cell.value
+      });
+    }
+  }
+
+  return protectedColumns;
+}
+
+function summarizeProtectedTemplateColumns(snapshot) {
+  return snapshot
+    .filter(({ value }) => value !== null && value !== undefined && value !== '')
+    .map(({ rowNumber, columnNumber, value }) => ({ rowNumber, columnNumber, value }));
+}
+
+function assertProtectedTemplateColumnsIntact(worksheet, snapshot, rowOffset = 0) {
+  const changedCells = snapshot.filter(({ rowNumber, columnNumber, value }) => {
+    const currentValue = worksheet.getCell(rowNumber + rowOffset, columnNumber).value;
+    return JSON.stringify(currentValue) !== JSON.stringify(value);
+  });
+
+  if (changedCells.length) {
+    throw new Error(`Template columns 16-23 were modified (${changedCells.length} cells).`);
+  }
+
+  console.debug('[Export] Protected template columns 16-23 preserved', {
+    worksheet: worksheet.name,
+    checkedCells: snapshot.length
+  });
+}
+
+function applyFinalExportAlignment(worksheet, rowCount) {
+  const headerInfo = findExportHeaderColumns(worksheet);
+
+  if (!headerInfo || !rowCount) {
+    console.warn('[Export] Final alignment skipped: export headers or data rows not found.');
+    return false;
+  }
+
+  const firstDataRow = headerInfo.headerRowNumber + 1;
+  const lastDataRow = firstDataRow + rowCount - 1;
+  const alignmentByColumn = [
+    [headerInfo.columns.date, 'right'],
+    [headerInfo.columns.code, 'center'],
+    [headerInfo.columns.quality, 'center']
+  ];
+
+  for (let rowNumber = firstDataRow; rowNumber <= lastDataRow; rowNumber += 1) {
+    alignmentByColumn.forEach(([columnNumber, horizontal]) => {
+      const cell = worksheet.getCell(rowNumber, columnNumber);
+      cell.alignment = {
+        horizontal,
+        vertical: 'top'
+      };
+      if (columnNumber === headerInfo.columns.date) {
+        cell.numFmt = 'dd/mm/yyyy';
+      }
+    });
+
+    const remarksCell = worksheet.getCell(rowNumber, headerInfo.columns.remarks);
+    remarksCell.alignment = {
+      ...remarksCell.alignment,
+      wrapText: false,
+      vertical: 'top'
+    };
+
+    [
+      headerInfo.columns.inventory,
+      headerInfo.columns.location,
+      headerInfo.columns.user,
+      headerInfo.columns.duration
+    ].forEach((columnNumber) => {
+      const cell = worksheet.getCell(rowNumber, columnNumber);
+      cell.alignment = {
+        ...cell.alignment,
+        vertical: 'top'
+      };
+    });
+  }
+
+  const debugRows = Math.min(3, rowCount);
+  console.debug('[Export] Final alignment applied', {
+    worksheet: worksheet.name,
+    headerRowNumber: headerInfo.headerRowNumber,
+    firstDataRow,
+    lastDataRow,
+    columns: headerInfo.columns,
+    sample: Array.from({ length: debugRows }, (_, index) => {
+      const rowNumber = firstDataRow + index;
+      return {
+        rowNumber,
+        date: worksheet.getCell(rowNumber, headerInfo.columns.date).alignment,
+        dateValue: worksheet.getCell(rowNumber, headerInfo.columns.date).value,
+        dateNumFmt: worksheet.getCell(rowNumber, headerInfo.columns.date).numFmt,
+        code: worksheet.getCell(rowNumber, headerInfo.columns.code).alignment,
+        quality: worksheet.getCell(rowNumber, headerInfo.columns.quality).alignment
+      };
+    })
+  });
+
+  return true;
+}
+
+function cellHasExportValue(cell) {
+  return cell.value !== null && cell.value !== undefined && cell.value !== '';
+}
+
+function findTemplateFooterStartRow(worksheet, firstDataRow, columns) {
+  const lastRowNumber = worksheet.lastRow?.number || firstDataRow;
+
+  for (let rowNumber = firstDataRow; rowNumber <= lastRowNumber; rowNumber += 1) {
+    const dateCell = worksheet.getCell(rowNumber, columns.date);
+    const hasOtherTemplateContent = [
+      columns.inventory,
+      columns.code,
+      columns.location,
+      columns.remarks,
+      columns.user,
+      columns.duration,
+      columns.quality
+    ].some((columnNumber) => cellHasExportValue(worksheet.getCell(rowNumber, columnNumber)));
+
+    if (!cellHasExportValue(dateCell) && hasOtherTemplateContent) {
+      return rowNumber;
+    }
+  }
+
+  return lastRowNumber + 1;
+}
+
+function snapshotTemplateRange(worksheet, startRow, endRow) {
+  const snapshot = [];
+  const lastColumnNumber = Math.max(worksheet.columnCount || 0, 23);
+
+  for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+    for (let columnNumber = 1; columnNumber <= lastColumnNumber; columnNumber += 1) {
+      snapshot.push({ rowNumber, columnNumber, value: worksheet.getCell(rowNumber, columnNumber).value });
+    }
+  }
+
+  return snapshot;
+}
+
+function assertTemplateRangeIntact(worksheet, snapshot, rowOffset = 0) {
+  const changedCells = snapshot.filter(({ rowNumber, columnNumber, value }) => {
+    const currentValue = worksheet.getCell(rowNumber + rowOffset, columnNumber).value;
+    return JSON.stringify(currentValue) !== JSON.stringify(value);
+  });
+
+  if (changedCells.length) {
+    throw new Error(`Template footer changed (${changedCells.length} cells).`);
+  }
+}
+
+function assertActivityBufferRowsEmpty(worksheet, emptyRows, dataColumns) {
+  const populatedCells = emptyRows.flatMap((rowNumber) => dataColumns
+    .map((columnNumber) => ({ rowNumber, columnNumber, value: worksheet.getCell(rowNumber, columnNumber).value }))
+    .filter(({ value }) => value !== null && value !== undefined && value !== ''));
+
+  if (populatedCells.length) {
+    throw new Error(`Activity buffer rows are not empty (${populatedCells.length} cells).`);
+  }
+}
+
+function populateTemplateWorksheet(worksheet, rows) {
+  if (!worksheet) {
+    return false;
+  }
+
+  const headerInfo = findExportHeaderColumns(worksheet);
+  const requiredColumns = ['date', 'inventory', 'code', 'location', 'remarks', 'user', 'duration', 'quality'];
+
+  if (!headerInfo || requiredColumns.some((key) => !headerInfo.columns[key])) {
+    console.error('[Export] Template data headers are incomplete.', {
+      worksheet: worksheet.name,
+      columns: headerInfo?.columns || null
+    });
+    return false;
+  }
+
+  const firstDataRow = headerInfo.headerRowNumber + 1;
+  const footerStartRow = findTemplateFooterStartRow(worksheet, firstDataRow, headerInfo.columns);
+  const availableRows = Math.max(0, footerStartRow - firstDataRow);
+  const bufferRowCount = 2;
+  const insertedRows = Math.max(0, rows.length + bufferRowCount - availableRows);
+  const standardActivityRowHeight = worksheet.getRow(firstDataRow).height || 15;
+
+  if (insertedRows > 0) {
+    const sourceRow = worksheet.getRow(Math.max(firstDataRow, footerStartRow - 1));
+    worksheet.spliceRows(footerStartRow, 0, ...Array.from({ length: insertedRows }, () => []));
+
+    for (let index = 0; index < insertedRows; index += 1) {
+      const targetRow = worksheet.getRow(footerStartRow + index);
+      targetRow.height = sourceRow.height;
+      sourceRow.eachCell({ includeEmpty: true }, (sourceCell, columnNumber) => {
+        targetRow.getCell(columnNumber).style = { ...sourceCell.style };
+      });
+    }
+  }
+
+  const dataColumns = requiredColumns.map((key) => headerInfo.columns[key]);
+  const unusedDataStartRow = firstDataRow + rows.length;
+  const dataAreaEndRow = footerStartRow + insertedRows - 1;
+
+  for (let rowNumber = unusedDataStartRow; rowNumber <= dataAreaEndRow; rowNumber += 1) {
+    dataColumns.forEach((columnNumber) => {
+      worksheet.getCell(rowNumber, columnNumber).value = null;
+    });
+  }
+
+  rows.forEach((record, index) => {
+    const targetRow = firstDataRow + index;
+    const valuesByHeader = {
+      date: record[0],
+      inventory: record[1],
+      code: record[2],
+      location: record[3],
+      remarks: record[4],
+      user: record[5],
+      duration: record[6],
+      quality: record[7]
+    };
+
+    requiredColumns.forEach((key) => {
+      worksheet.getCell(targetRow, headerInfo.columns[key]).value = valuesByHeader[key];
+    });
+
+    worksheet.getRow(targetRow).height = standardActivityRowHeight;
+  });
+
+  const lastDataRow = firstDataRow + rows.length - 1;
+  const emptyRows = [lastDataRow + 1, lastDataRow + 2];
+  emptyRows.forEach((rowNumber) => {
+    dataColumns.forEach((columnNumber) => {
+      worksheet.getCell(rowNumber, columnNumber).value = null;
+    });
+  });
+
+  console.log('[Export] Application data written to template', {
+    exportDataCount: rows.length,
+    worksheet: worksheet.name,
+    firstDataRow,
+    lastDataRow,
+    firstDataRowValues: worksheet.getRow(firstDataRow).values,
+    lastDataRowValues: worksheet.getRow(lastDataRow).values,
+    emptyRows,
+    protectedTemplateColumns: summarizeProtectedTemplateColumns(snapshotProtectedTemplateColumns(worksheet))
+  });
+  console.log('Export data count:', rows.length);
+
+  return {
+    firstDataRow,
+    lastDataRow,
+    emptyRows,
+    footerStartRow: footerStartRow + insertedRows,
+    insertedRows
+  };
+}
+
+function setupNewWorksheet(worksheet, rows) {
+  const headers = [
+    'Tgl. / Date',
+    'Kode Inv. (uraian) / Inv. Code ( Description)',
+    'Kode / Code',
+    'Lokasi / Location',
+    'Keterangan / Remarks',
+    'Pengguna / User',
+    'Durasi / Duration',
+    'Kendali Mutu / Quality Assurance'
+  ];
+
+  worksheet.mergeCells('A1:H1');
+  worksheet.mergeCells('A2:H2');
+  worksheet.mergeCells('A4:H4');
+
+  worksheet.getCell('A1').value = 'PT MEINDO ELANG INDAH';
+  worksheet.getCell('A1').font = { bold: true, size: 14, name: 'Arial' };
+  worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  worksheet.getCell('A2').value = 'AKTIVITAS-AKTIVITAS IT / IT ACTIVITIES';
+  worksheet.getCell('A2').font = { bold: true, size: 12, name: 'Arial' };
+  worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+  worksheet.getCell('A4').value = `Nama / Name : ${state.currentUser?.displayName || 'User'}`;
+  worksheet.getCell('A4').font = { bold: true, size: 10, name: 'Arial' };
+
+  const periodLabel = getExportPeriodLabel();
+  worksheet.getCell('A5').value = `Periode : ${periodLabel || 'Semua'}`;
+  worksheet.getCell('A5').font = { bold: true, size: 10, name: 'Arial' };
+
+  worksheet.getRow(1).height = 28;
+  worksheet.getRow(2).height = 28;
+  worksheet.getRow(5).height = 20;
+
+  const headerRowIndex = 7;
+  worksheet.getRow(headerRowIndex).values = headers;
+  worksheet.getRow(headerRowIndex).height = 24;
+
+  const columnWidths = [15, 22, 18, 22, 42, 18, 14, 20];
+  worksheet.columns = columnWidths.map((width, index) => ({
+    width,
+    key: String.fromCharCode(65 + index),
+    style: { font: { name: 'Arial', size: 10 } }
+  }));
+
+  const headerCellStyle = {
+    font: { bold: true, name: 'Arial', size: 10 },
+    fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E2F3' } },
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: {
+      top: { style: 'thick', color: { argb: 'FF000000' } },
+      left: { style: 'thick', color: { argb: 'FF000000' } },
+      right: { style: 'thick', color: { argb: 'FF000000' } },
+      bottom: { style: 'thick', color: { argb: 'FF000000' } }
+    }
+  };
+
+  headers.forEach((_, index) => {
+    const cell = worksheet.getCell(headerRowIndex, index + 1);
+    Object.assign(cell, { style: headerCellStyle });
+  });
+
+  const tableRows = rows.map((record) => ({
+    values: record,
+    height: 15
+  }));
+
+  const firstDataRow = 8;
+
+  tableRows.forEach((rowData, index) => {
+    const rowIndex = headerRowIndex + index + 1;
+    const row = worksheet.getRow(rowIndex);
+    row.values = rowData.values;
+    row.height = rowData.height;
+
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const isDate = colNumber === 1;
+      const isCode = colNumber === 3;
+      const isDuration = colNumber === 7;
+      const isQuality = colNumber === 8;
+      const horizontal = isDate ? 'right' : isCode || isDuration || isQuality ? 'center' : 'left';
+
+      cell.font = { name: 'Arial', size: 10, color: { argb: 'FF1F2937' } };
+      cell.alignment = {
+        vertical: 'top',
+        horizontal,
+        wrapText: false,
+        indent: 0
+      };
+      cell.border = {
+        top: { style: 'hair', color: { argb: 'FF6B7280' } },
+        left: { style: colNumber === 1 ? 'thick' : 'hair', color: { argb: 'FF000000' } },
+        right: { style: colNumber === 8 ? 'thick' : 'hair', color: { argb: 'FF000000' } },
+        bottom: { style: 'hair', color: { argb: 'FF6B7280' } }
+      };
+
+    });
+  });
+
+  const blankStartRow = headerRowIndex + tableRows.length + 1;
+  for (let i = 0; i < 2; i += 1) {
+    const rowIndex = blankStartRow + i;
+    const row = worksheet.getRow(rowIndex);
+    row.height = 18;
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.border = {
+        top: { style: 'hair', color: { argb: 'FF6B7280' } },
+        left: { style: colNumber === 1 ? 'thick' : 'hair', color: { argb: 'FF000000' } },
+        right: { style: colNumber === 8 ? 'thick' : 'hair', color: { argb: 'FF000000' } },
+        bottom: { style: colNumber === 8 ? 'thick' : 'hair', color: { argb: 'FF000000' } }
+      };
+    });
+  }
+
+  worksheet.getRow(blankStartRow + 1).height = 20;
+  worksheet.getRow(1).border = { top: { style: 'thick' }, left: { style: 'thick' }, right: { style: 'thick' }, bottom: { style: 'thick' } };
+  worksheet.getCell('A1').border = { top: 'thick', left: 'thick', right: 'thick', bottom: 'thick' };
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber >= headerRowIndex && rowNumber <= blankStartRow + 1) {
+      row.alignment = row.alignment || {};
+      row.alignment.vertical = 'top';
+    }
+  });
+}
+
+async function exportExcel() {
+  if (!state.currentUser) {
+    showToast('Silakan login terlebih dahulu', 'error');
+    return;
+  }
+
+  if (!isExcelJSAvailable()) {
+    try {
+      await loadExcelJS();
+    } catch (error) {
+      console.error('[Export] ExcelJS library unavailable:', error);
+      showToast('Library ExcelJS belum tersedia. Silakan refresh halaman atau cek koneksi internet.', 'error');
+      return;
+    }
+  }
+
+  const rows = getExportRows();
+
+  if (!rows.length) {
+    showToast('Tidak ada data riwayat untuk diekspor.', 'warning');
+    return;
+  }
+
+  try {
+    const workbook = await loadTemplateWorkbook();
+    if (!workbook) {
+      throw new Error('Template export tidak dapat dimuat.');
+    }
+
+    const worksheet = resolveTemplateWorksheet(workbook);
+    if (!worksheet) {
+      throw new Error('Worksheet template export tidak ditemukan.');
+    }
+
+    const protectedTemplateColumns = snapshotProtectedTemplateColumns(worksheet);
+    const templateHeaderInfo = findExportHeaderColumns(worksheet);
+    const templateFooterStart = templateHeaderInfo
+      ? findTemplateFooterStartRow(worksheet, templateHeaderInfo.headerRowNumber + 1, templateHeaderInfo.columns)
+      : null;
+    const templateFooterEnd = worksheet.lastRow?.number || templateFooterStart;
+    const templateFooterSnapshot = templateFooterStart
+      ? snapshotTemplateRange(worksheet, templateFooterStart, templateFooterEnd)
+      : [];
+    console.log('Template col 16-23 before:', summarizeProtectedTemplateColumns(protectedTemplateColumns));
+    console.log('Template footer before:', templateFooterSnapshot.filter(({ value }) => value !== null && value !== undefined && value !== ''));
+    const hasTemplateData = populateTemplateWorksheet(worksheet, rows);
+    if (!hasTemplateData) {
+      throw new Error('Data History gagal ditulis ke worksheet template.');
+    }
+
+    const alignmentApplied = applyFinalExportAlignment(worksheet, rows.length);
+    if (!alignmentApplied) {
+      throw new Error('Kolom alignment export tidak ditemukan pada template.');
+    }
+
+    assertProtectedTemplateColumnsIntact(worksheet, protectedTemplateColumns, hasTemplateData.insertedRows);
+    assertTemplateRangeIntact(worksheet, templateFooterSnapshot, hasTemplateData.insertedRows);
+    assertActivityBufferRowsEmpty(
+      worksheet,
+      hasTemplateData.emptyRows,
+      ['date', 'inventory', 'code', 'location', 'remarks', 'user', 'duration', 'quality']
+        .map((key) => templateHeaderInfo.columns[key])
+    );
+    console.log('Template col 16-23 after:', summarizeProtectedTemplateColumns(snapshotProtectedTemplateColumns(worksheet)));
+    console.log('Template footer after:', {
+      footerStartRow: hasTemplateData.footerStartRow,
+      insertedRows: hasTemplateData.insertedRows
+    });
+
+    workbook.creator = state.currentUser.displayName || 'ActLog';
+    workbook.lastModifiedBy = state.currentUser.displayName || 'ActLog';
+    workbook.modified = new Date();
+
+    console.debug('[Export] Downloading populated template workbook', {
+      worksheet: worksheet.name,
+      exportDataCount: rows.length
+    });
+
+    const periodTerm = getExportPeriodLabel();
+    const fileName = periodTerm ? `DAILY REPORT - ${periodTerm}.xlsx` : 'DAILY REPORT.xlsx';
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+
+    showToast('Report Excel berhasil diunduh.', 'success');
+  } catch (error) {
+    console.error('[Export] Excel export failed:', error);
+    showToast('Gagal membuat report Excel', 'error');
+  }
+}
+
 function formatDateTime(dateValue) {
   const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
   return new Intl.DateTimeFormat('id-ID', {
@@ -831,12 +1615,10 @@ async function handleSaveActivity(event) {
 
   try {
     const payload = getActiveActivityFormPayload();
-    console.log('[Activity] Nama input:', ui.userName.value);
-    console.log('[Activity] Activity data:', payload);
 
     console.debug('[Activity] Saving to Firestore...', {
       activityId: state.activeActivity.id,
-      payload
+      fields: Object.keys(payload)
     });
 
     await updateActivity(state.activeActivity.id, {
@@ -935,10 +1717,6 @@ async function handleEndActivity() {
     const payload = getActiveActivityFormPayload();
     const selectedWorkCodes = normalizeWorkCodes(ui.activityWorkCode.value);
 
-    console.log('[Activity] Nama input:', ui.userName.value);
-    console.log('[Activity] Activity data:', payload);
-    console.log('[Activity] Saving to Firestore:', payload);
-
     await updateActivity(state.activeActivity.id, {
       inventoryCode: payload.inventoryCode,
       userName: payload.userName,
@@ -950,8 +1728,7 @@ async function handleEndActivity() {
     console.debug('[Activity] Confirm end activity', {
       activityId: state.activeActivity.id,
       startedAt: state.activeActivity.startedAt,
-      userName: payload.userName,
-      workCode: formatWorkCodes(selectedWorkCodes)
+      workCodeCount: selectedWorkCodes.length
     });
 
     await finishActivity(state.activeActivity.id, state.activeActivity.startedAt);
@@ -1076,29 +1853,64 @@ async function handleLogout() {
   }
 }
 
+function stopActivityListener() {
+  state.activityListenerGeneration += 1;
+
+  if (state.unsubscribeActivities) {
+    console.debug('[Activity] Stopping Firestore listener', {
+      generation: state.activityListenerGeneration
+    });
+    state.unsubscribeActivities();
+    state.unsubscribeActivities = null;
+  }
+}
+
 function handleAuthStateChange(user) {
   state.currentUser = user;
   state.authReady = true;
   renderUserHeader();
+  stopActivityListener();
 
   if (state.currentUser) {
-    if (state.unsubscribeActivities) {
-      state.unsubscribeActivities();
-    }
-
-    state.unsubscribeActivities = subscribeToActivities(state.currentUser.uid, (items) => {
-      state.activities = items;
-      const ongoing = items.find((item) => item.status === 'ongoing');
-      state.activeActivity = ongoing || null;
-      renderActiveActivity();
-      renderHistory();
+    setActivityUiLoading(true);
+    const listenerGeneration = state.activityListenerGeneration;
+    console.debug('[Activity] Auth ready; creating Firestore listener', {
+      uid: state.currentUser.uid,
+      generation: listenerGeneration
     });
+    state.unsubscribeActivities = subscribeToActivities(
+      state.currentUser.uid,
+      (items) => {
+        if (listenerGeneration !== state.activityListenerGeneration) {
+          return;
+        }
+        state.activities = items;
+        const ongoing = items.find((item) => item.status === 'ongoing');
+        state.activeActivity = ongoing || null;
+        renderActiveActivity();
+        renderHistory();
+        setActivityUiLoading(false);
+      },
+      (error) => {
+        if (listenerGeneration !== state.activityListenerGeneration) {
+          return;
+        }
+        console.error('[Activity] Firestore listener rejected', {
+          uid: state.currentUser?.uid || null,
+          code: error.code
+        });
+        state.activities = [];
+        renderHistory();
+        renderActivityLoadError();
+      }
+    );
 
     const persistedView = localStorage.getItem('actlog-current-view') || 'dashboard';
     setView(persistedView);
     ui.loginForm.reset();
     ui.registerForm.reset();
   } else {
+    setActivityUiLoading(false);
     state.activities = [];
     state.activeActivity = null;
     renderHistory();
@@ -1175,12 +1987,20 @@ function bindEvents() {
   ui.filterDate.addEventListener('change', renderHistory);
   ui.filterStatus.addEventListener('change', renderHistory);
   ui.historyFilterToggle.addEventListener('click', () => {
-    const isOpen = ui.historyFilterToggle.getAttribute('aria-expanded') === 'true';
-    setHistoryFilterPanelOpen(!isOpen);
+    const isOpen = ui.historyMenuPanel && !ui.historyMenuPanel.hidden;
+    setHistoryMenuPanelOpen(!isOpen);
+  });
+  ui.historyMenuFilter.addEventListener('click', () => {
+    setHistoryMenuPanelOpen(false);
+    setHistoryFilterPanelOpen(true);
+  });
+  ui.historyExportBtn.addEventListener('click', () => {
+    setHistoryMenuPanelOpen(false);
+    exportExcel();
   });
   ui.historyFilterApply.addEventListener('click', () => {
     renderHistory();
-    setHistoryFilterPanelOpen(false);
+    closeHistoryPanels();
   });
   ui.historyFilterReset.addEventListener('click', () => {
     ui.searchInput.value = '';
@@ -1189,6 +2009,7 @@ function bindEvents() {
     ui.filterDate.value = '';
     ui.filterStatus.value = 'all';
     renderHistory();
+    closeHistoryPanels();
   });
 
   ui.confirmModal.addEventListener('click', (event) => {

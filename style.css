@@ -370,6 +370,30 @@ textarea {
   margin-bottom: 18px;
 }
 
+.quick-actions > .empty-state {
+  width: min(100%, 360px);
+  margin: 0;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.quick-actions.activity-ui-loading > * {
+  visibility: hidden;
+}
+
+.quick-actions.activity-ui-error > * {
+  visibility: hidden;
+}
+
+.quick-actions.activity-ui-error .activity-load-error {
+  visibility: visible;
+  display: block;
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 .start-activity-fab {
   width: 64px;
   height: 64px;
@@ -431,6 +455,10 @@ textarea {
   color: var(--text-soft);
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+.activity-load-error {
+  display: none;
 }
 
 .empty-state {
@@ -680,6 +708,47 @@ textarea {
 .history-filter-toggle.has-active-filter .filter-active-indicator {
   opacity: 1;
   transform: scale(1);
+}
+
+.history-menu-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.015);
+  animation: filter-panel-enter 180ms ease both;
+}
+
+.history-menu-panel[hidden] {
+  display: none;
+}
+
+.history-menu-option {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.history-menu-option:hover,
+.history-menu-option:focus-visible {
+  background: var(--primary-soft);
+  border-color: rgba(37, 99, 235, 0.15);
+  outline: none;
 }
 
 .history-filter-panel {

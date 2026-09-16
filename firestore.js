@@ -11,14 +11,21 @@ import {
   updateDoc,
   where
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { auth } from './auth.js';
 import { firebaseApp } from './config.js';
 
 export const db = getFirestore(firebaseApp);
 export const activitiesRef = collection(db, 'activities');
 
 export async function createActivity(activityPayload) {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error('Tidak ada user yang sedang login.');
+  }
+
   const payload = {
-    userId: activityPayload.userId,
+    userId: currentUser.uid,
     inventoryCode: activityPayload.inventoryCode || '',
     userName: activityPayload.userName || '',
     location: activityPayload.location || '',
@@ -30,17 +37,14 @@ export async function createActivity(activityPayload) {
     status: 'ongoing'
   };
 
-  console.debug('[Firestore] createActivity -> write payload', {
-    userId: payload.userId,
-    userName: payload.userName,
-    workCode: payload.workCode,
-    location: payload.location,
+  console.debug('[Firestore] createActivity -> write requested', {
+    userId: currentUser.uid,
     status: payload.status
   });
 
   try {
     const ref = await addDoc(activitiesRef, payload);
-    console.log('[Activity] Firestore save successful', { id: ref.id, userName: payload.userName });
+    console.log('[Activity] Firestore save successful', { id: ref.id });
     console.debug('[Firestore] createActivity -> success', { id: ref.id, status: payload.status });
     return { id: ref.id, ...payload };
   } catch (error) {
@@ -51,20 +55,23 @@ export async function createActivity(activityPayload) {
 }
 
 export async function updateActivity(activityId, updates) {
+  if (!auth.currentUser) {
+    throw new Error('Tidak ada user yang sedang login.');
+  }
+
   const ref = doc(db, 'activities', activityId);
 
   console.debug('[Firestore] updateActivity -> start', {
     activityId,
-    userName: updates.userName,
-    updates
+    fields: Object.keys(updates)
   });
 
   try {
     await updateDoc(ref, updates);
-    if (Object.prototype.hasOwnProperty.call(updates, 'userName')) {
-      console.log('[Activity] Firestore save successful', { activityId, userName: updates.userName });
-    }
-    console.debug('[Firestore] updateActivity -> success', { activityId, updates });
+    console.debug('[Firestore] updateActivity -> success', {
+      activityId,
+      fields: Object.keys(updates)
+    });
   } catch (error) {
     console.error('[Activity] Save error:', error);
     console.error('[Firestore] updateActivity -> failed', { activityId, error });
@@ -73,6 +80,10 @@ export async function updateActivity(activityId, updates) {
 }
 
 export async function deleteActivity(activityId) {
+  if (!auth.currentUser) {
+    throw new Error('Tidak ada user yang sedang login.');
+  }
+
   const ref = doc(db, 'activities', activityId);
 
   console.log('[History] Deleting Firestore activity:', { activityId });
@@ -86,36 +97,68 @@ export async function deleteActivity(activityId) {
   }
 }
 
-export function subscribeToActivities(userId, callback) {
-  if (!userId) {
+export function subscribeToActivities(userId, callback, onError) {
+  const authUser = auth.currentUser;
+  const listenerPath = 'activities';
+
+  console.debug('[Firestore] Activity listener requested', {
+    path: listenerPath,
+    authUserAvailable: Boolean(authUser),
+    authUid: authUser?.uid || null,
+    requestedUid: userId || null
+  });
+
+  if (!userId || !authUser || authUser.uid !== userId) {
+    console.warn('[Firestore] Activity listener skipped: authenticated user mismatch', {
+      path: listenerPath,
+      authUid: authUser?.uid || null,
+      requestedUid: userId || null
+    });
     callback([]);
     return () => {};
   }
 
   const q = query(
     activitiesRef,
-    where('userId', '==', userId),
+    where('userId', '==', authUser.uid),
     orderBy('startedAt', 'desc')
   );
 
-  return onSnapshot(
+  console.debug('[Firestore] Activity listener created', {
+    path: listenerPath,
+    uid: userId,
+    query: "where('userId', '==', auth.currentUser.uid), orderBy('startedAt', 'desc')"
+  });
+
+  const unsubscribe = onSnapshot(
     q,
     (snapshot) => {
       const items = snapshot.docs.map((docSnapshot) => ({
         id: docSnapshot.id,
         ...docSnapshot.data()
       }));
-      items.forEach((activity) => {
-        console.log('[History] Activity data:', activity);
-        console.log('[History] Nama yang ditampilkan:', activity.userName || 'User');
-      });
       callback(items);
     },
     (error) => {
-      console.error('Firestore listener error:', error);
-      callback([]);
+      console.error('[Firestore] Activity listener error', {
+        path: listenerPath,
+        uid: userId,
+        code: error.code,
+        message: error.message
+      });
+      if (onError) {
+        onError(error);
+      }
     }
   );
+
+  return () => {
+    console.debug('[Firestore] Activity listener stopped', {
+      path: listenerPath,
+      uid: userId
+    });
+    unsubscribe();
+  };
 }
 
 export async function finishActivity(activityId, startedAt) {
