@@ -70,6 +70,9 @@ let openSwipeActivityId = null;
 let pendingDeleteActivityId = null;
 let pendingEndActivityId = null;
 let pendingCancelActivityId = null;
+// Activity ids whose card has unsaved local edits. Remote snapshots must not
+// clobber a card the user is still editing on this device.
+const dirtyActivityCards = new Set();
 const pendingSwipeFrames = new WeakMap();
 const pendingSwipePositions = new WeakMap();
 
@@ -232,6 +235,7 @@ function renderWorkCodeButtonsForCard(card) {
 
       hiddenInput.value = formatWorkCodes(nextCodes);
       container.classList.remove('field-invalid');
+      markCardDirty(card.dataset.activityId);
       renderWorkCodeButtonsForCard(card);
     });
   });
@@ -317,6 +321,81 @@ function getCard(activityId) {
   return Array.from(
     ui.activeActivitiesList.querySelectorAll('.active-activity-card')
   ).find((card) => card.dataset.activityId === activityId) || null;
+}
+
+// Mark a card as having unsaved local edits and reset its save-button label back
+// to "Simpan Detail" so the button always reflects the card's real saved state.
+function markCardDirty(activityId) {
+  if (!activityId) {
+    return;
+  }
+
+  dirtyActivityCards.add(activityId);
+
+  const card = getCard(activityId);
+  const saveBtn = card?.querySelector('.save-activity-btn');
+  if (saveBtn && saveBtn.textContent !== 'Simpan Detail') {
+    saveBtn.textContent = 'Simpan Detail';
+  }
+}
+
+function clearCardDirty(activityId) {
+  dirtyActivityCards.delete(activityId);
+}
+
+// Push the latest saved data for an activity into its existing card. This is what
+// makes "Simpan Detail" on one device appear on another: the Firestore snapshot
+// updates state.activities, and here we reflect it into the already-rendered card.
+// We skip a card the user is focused in or has unsaved edits on, so remote updates
+// never clobber local typing.
+function syncCardFromActivity(card, activity) {
+  if (!card || !activity) {
+    return;
+  }
+
+  if (dirtyActivityCards.has(activity.id) || card.contains(document.activeElement)) {
+    return;
+  }
+
+  const inventoryInput = card.querySelector('.inventory-code');
+  const userNameInput = card.querySelector('.user-name');
+  const locationSelect = card.querySelector('.activity-location');
+  const workCodeHidden = card.querySelector('.activity-work-code');
+  const remarksInput = card.querySelector('.activity-remarks');
+  const customWrap = card.querySelector('.custom-location-wrap');
+  const customInput = card.querySelector('.custom-location-input');
+
+  const nextInventory = toUppercaseInventory(activity.inventoryCode || '');
+  if (inventoryInput.value !== nextInventory) {
+    inventoryInput.value = nextInventory;
+  }
+
+  const nextUserName = toTitleCase(activity.userName || '');
+  if (userNameInput.value !== nextUserName) {
+    userNameInput.value = nextUserName;
+  }
+
+  const location = activity.location || 'REST AREA';
+  const locationInList = LOCATION_OPTIONS.includes(location);
+  locationSelect.value = locationInList ? location : 'OTHER LOCATION';
+  if (locationInList) {
+    customInput.value = '';
+    customWrap.classList.add('hidden');
+  } else {
+    customInput.value = location;
+    customWrap.classList.remove('hidden');
+  }
+
+  const nextWorkCode = formatWorkCodes(activity.workCode || '');
+  if (workCodeHidden.value !== nextWorkCode) {
+    workCodeHidden.value = nextWorkCode;
+    renderWorkCodeButtonsForCard(card);
+  }
+
+  const nextRemarks = activity.remarks || '';
+  if (remarksInput.value !== nextRemarks) {
+    remarksInput.value = nextRemarks;
+  }
 }
 
 function updateCardCustomLocationVisibility(card) {
@@ -502,6 +581,11 @@ function buildActiveActivityCard(activity) {
   });
   remarksInput.addEventListener('input', () => remarksInput.classList.remove('field-invalid'));
 
+  // Any local edit marks this card dirty so a remote snapshot won't overwrite the
+  // user's in-progress typing (work-code button clicks mark dirty in their handler).
+  card.addEventListener('input', () => markCardDirty(activity.id));
+  card.addEventListener('change', () => markCardDirty(activity.id));
+
   return card;
 }
 
@@ -554,6 +638,21 @@ function renderActiveActivities() {
     });
   }
 
+  // Drop dirty flags for activities that are no longer active.
+  Array.from(dirtyActivityCards).forEach((id) => {
+    if (!desiredIds.includes(id)) {
+      dirtyActivityCards.delete(id);
+    }
+  });
+
+  // Reflect the latest saved data into every existing card. Cards are only rebuilt
+  // when the id set/order changes, so without this a "Simpan Detail" performed on
+  // another device would never update here. syncCardFromActivity skips cards that
+  // are focused or have unsaved local edits, so local typing is never clobbered.
+  ongoing.forEach((activity) => {
+    syncCardFromActivity(getCard(activity.id), activity);
+  });
+
   if (hasOngoing) {
     ensureTimerLoop();
   } else {
@@ -565,11 +664,13 @@ function setActivityUiLoading(isLoading) {
   ui.quickActions.classList.toggle('activity-ui-loading', isLoading);
   ui.quickActions.classList.remove('activity-ui-error');
   ui.quickActions.setAttribute('aria-busy', String(isLoading));
-  ui.startActivityBtn.disabled = isLoading;
+  // The + button is base UI and does not depend on the Firestore query, so it is
+  // never gated on loading. handleStartActivity() still guards on currentUser.
 }
 
 function renderActivityLoadError() {
   state.activeActivities = [];
+  dirtyActivityCards.clear();
   stopTimerLoop();
   ui.quickActions.classList.remove('activity-ui-loading');
   ui.quickActions.classList.add('activity-ui-error');
@@ -1421,36 +1522,49 @@ function populateTemplateWorksheet(worksheet, rows) {
     return false;
   }
 
+  const columns = headerInfo.columns;
+  // Activity data always starts on the first row after the header (row 11 in the
+  // current template) and grows vertically, one row per activity: B11, B12, B13...
   const firstDataRow = headerInfo.headerRowNumber + 1;
-  const footerStartRow = findTemplateFooterStartRow(worksheet, firstDataRow, headerInfo.columns);
-  const availableRows = Math.max(0, footerStartRow - firstDataRow);
+  // Row where the protected template block (Tgl./Note/signatures) ACTUALLY begins
+  // in the file - detected from the template, never hard-coded.
+  const footerStartRow = findTemplateFooterStartRow(worksheet, firstDataRow, columns);
   const bufferRowCount = 2;
+  const availableRows = Math.max(0, footerStartRow - firstDataRow);
+  // Rows that must fit above the protected block: every activity + 2 buffer rows.
+  // Whatever does not fit is INSERTED (not overwritten) just above the footer.
   const insertedRows = Math.max(0, rows.length + bufferRowCount - availableRows);
-  const standardActivityRowHeight = worksheet.getRow(firstDataRow).height || 15;
 
+  // Capture a pristine activity row's full styling so inserted rows and the two
+  // buffer rows keep the template grid (border/fill/font/alignment/number format)
+  // instead of rendering bare. Column range covers the table plus the styled M/N.
+  const maxColumn = Math.max(worksheet.columnCount || 0, 14);
+  const donorRow = worksheet.getRow(firstDataRow);
+  const donorHeight = donorRow.height || 15;
+  const donorStyles = {};
+  for (let columnNumber = 1; columnNumber <= maxColumn; columnNumber += 1) {
+    donorStyles[columnNumber] = { ...donorRow.getCell(columnNumber).style };
+  }
+
+  // Insert the extra rows above the protected block so the whole footer shifts down
+  // intact (values, formulas, styles, merges, row heights, columns 16-23). The
+  // worksheet is never cleared or rebuilt.
   if (insertedRows > 0) {
-    const sourceRow = worksheet.getRow(Math.max(firstDataRow, footerStartRow - 1));
     worksheet.spliceRows(footerStartRow, 0, ...Array.from({ length: insertedRows }, () => []));
+  }
 
-    for (let index = 0; index < insertedRows; index += 1) {
-      const targetRow = worksheet.getRow(footerStartRow + index);
-      targetRow.height = sourceRow.height;
-      sourceRow.eachCell({ includeEmpty: true }, (sourceCell, columnNumber) => {
-        targetRow.getCell(columnNumber).style = { ...sourceCell.style };
-      });
+  // Re-apply the activity-row styling across the whole activity + buffer region so
+  // original, inserted and buffer rows all share the same standard grid and height.
+  const activityRegionEndRow = footerStartRow + insertedRows - 1;
+  for (let rowNumber = firstDataRow; rowNumber <= activityRegionEndRow; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    row.height = donorHeight;
+    for (let columnNumber = 1; columnNumber <= maxColumn; columnNumber += 1) {
+      row.getCell(columnNumber).style = { ...donorStyles[columnNumber] };
     }
   }
 
-  const dataColumns = requiredColumns.map((key) => headerInfo.columns[key]);
-  const unusedDataStartRow = firstDataRow + rows.length;
-  const dataAreaEndRow = footerStartRow + insertedRows - 1;
-
-  for (let rowNumber = unusedDataStartRow; rowNumber <= dataAreaEndRow; rowNumber += 1) {
-    dataColumns.forEach((columnNumber) => {
-      worksheet.getCell(rowNumber, columnNumber).value = null;
-    });
-  }
-
+  // Write activity values, one row each, starting at firstDataRow (B11 downward).
   rows.forEach((record, index) => {
     const targetRow = firstDataRow + index;
     const valuesByHeader = {
@@ -1465,14 +1579,19 @@ function populateTemplateWorksheet(worksheet, rows) {
     };
 
     requiredColumns.forEach((key) => {
-      worksheet.getCell(targetRow, headerInfo.columns[key]).value = valuesByHeader[key];
+      worksheet.getCell(targetRow, columns[key]).value = valuesByHeader[key];
     });
 
-    worksheet.getRow(targetRow).height = standardActivityRowHeight;
+    // Remarks stay on a single line: no wrap text, no dynamic row height.
+    const remarksCell = worksheet.getCell(targetRow, columns.remarks);
+    remarksCell.alignment = { ...(remarksCell.alignment || {}), wrapText: false, vertical: 'top' };
   });
 
+  // Exactly two empty buffer rows after the last activity: values cleared, but the
+  // formatting applied above (border/fill/font/alignment/height) is preserved.
   const lastDataRow = firstDataRow + rows.length - 1;
   const emptyRows = [lastDataRow + 1, lastDataRow + 2];
+  const dataColumns = requiredColumns.map((key) => columns[key]);
   emptyRows.forEach((rowNumber) => {
     dataColumns.forEach((columnNumber) => {
       worksheet.getCell(rowNumber, columnNumber).value = null;
@@ -1484,12 +1603,10 @@ function populateTemplateWorksheet(worksheet, rows) {
     worksheet: worksheet.name,
     firstDataRow,
     lastDataRow,
-    firstDataRowValues: worksheet.getRow(firstDataRow).values,
-    lastDataRowValues: worksheet.getRow(lastDataRow).values,
-    emptyRows,
-    protectedTemplateColumns: summarizeProtectedTemplateColumns(snapshotProtectedTemplateColumns(worksheet))
+    footerStartRow: footerStartRow + insertedRows,
+    insertedRows,
+    emptyRows
   });
-  console.log('Export data count:', rows.length);
 
   return {
     firstDataRow,
@@ -1813,9 +1930,21 @@ async function handleSaveActivity(event, activityId) {
       workCode: payload.workCode
     });
 
+    // Write succeeded: this card is now clean and its button confirms the save.
+    // On failure the catch below leaves the label as "Simpan Detail".
+    clearCardDirty(activityId);
+    const saveBtn = card.querySelector('.save-activity-btn');
+    if (saveBtn) {
+      saveBtn.textContent = 'Detail tersimpan';
+    }
+
     showToast('Detail service berhasil disimpan.', 'success');
   } catch (error) {
     console.error('[Activity] Save failed:', error);
+    const saveBtn = card.querySelector('.save-activity-btn');
+    if (saveBtn) {
+      saveBtn.textContent = 'Simpan Detail';
+    }
     const knownMessages = [
       'Pilih minimal satu kode pengerjaan.',
       'Isi lokasi manual jika memilih OTHER LOCATION',
@@ -2076,6 +2205,7 @@ function handleAuthStateChange(user) {
     setActivityUiLoading(false);
     state.activities = [];
     state.activeActivities = [];
+    dirtyActivityCards.clear();
     stopTimerLoop();
     ui.activeActivitiesList.replaceChildren();
     renderHistory();

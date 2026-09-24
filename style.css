@@ -377,7 +377,11 @@ textarea {
   text-align: center;
 }
 
-.quick-actions.activity-ui-loading > * {
+/* Base Dashboard UI (the + button and its label) does not depend on Firestore, so
+   it renders immediately. While loading we only hide the empty-state placeholder
+   to avoid flashing "no activity" before the first snapshot arrives. visibility
+   (not display) keeps its box reserved, so revealing it causes no layout shift. */
+.quick-actions.activity-ui-loading > .empty-state {
   visibility: hidden;
 }
 
