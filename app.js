@@ -89,7 +89,11 @@ function toTitleCase(value) {
 
   return raw.replace(/\S+/g, (word) => {
     if (!word) return word;
-    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    // Only capitalize the first character of each word and keep the rest EXACTLY
+    // as typed. Never call .toLowerCase() on the remainder: that would destroy
+    // acronyms the user typed in caps (IT, QA, HR, PIC, ...). Whitespace between
+    // words is untouched, so spaces can still be typed normally.
+    return word.charAt(0).toUpperCase() + word.slice(1);
   });
 }
 
