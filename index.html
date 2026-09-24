@@ -134,71 +134,7 @@
             </span>
           </div>
 
-          <div id="active-activity-card" class="card hidden" aria-live="polite">
-            <div class="status-row">
-              <span id="status-badge" class="status-badge ongoing">Sedang Berlangsung</span>
-              <span id="activity-timer" class="timer">00:00:00</span>
-            </div>
-
-            <form id="activity-form" class="activity-form">
-              <div class="field-grid two-column">
-                <label>
-                  <span>Kode Inventaris PC/Laptop</span>
-                  <input id="inventory-code" type="text" maxlength="50" placeholder="Contoh: PC24059MEB" />
-                </label>
-
-                <label>
-                  <span>Nama User</span>
-                  <input id="user-name" type="text" maxlength="80" placeholder="Nama user" />
-                </label>
-              </div>
-
-              <div class="field-grid two-column">
-                <label>
-                  <span>Lokasi</span>
-                  <select id="activity-location"></select>
-                </label>
-
-                <div>
-                  <span class="work-code-label">Kode Pengerjaan</span>
-                  <div id="work-code-options" class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
-                  <input id="activity-work-code" type="hidden" value="HW" />
-                </div>
-              </div>
-
-              <div id="custom-location-wrap" class="hidden">
-                <label>
-                  <span>Lokasi Lain</span>
-                  <input id="custom-location-input" type="text" maxlength="80" placeholder="Isi lokasi manual" />
-                </label>
-              </div>
-
-              <label>
-                <span>Keterangan / Remarks</span>
-                <textarea id="activity-remarks" rows="4" maxlength="2000" placeholder="Opsional..."></textarea>
-              </label>
-
-              <div class="form-actions">
-                <button class="primary-btn" type="submit">Simpan Detail</button>
-                <button id="end-activity-btn" class="danger-btn" type="button">Akhiri Service</button>
-              </div>
-            </form>
-
-            <div id="cancel-activity-control" class="cancel-activity-control hidden">
-              <button
-                id="cancel-activity-btn"
-                class="secondary-btn cancel-activity-btn"
-                type="button"
-                aria-label="Cancel Aktivitas"
-                title="Cancel Aktivitas"
-              >
-                <svg class="cancel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-              <span class="cancel-activity-label">Cancel Aktivitas</span>
-            </div>
-          </div>
+          <div id="active-activities-list" class="active-activities-list" aria-live="polite"></div>
         </section>
 
         <section id="history-view" class="view-panel hidden" aria-label="Riwayat aktivitas">
@@ -325,5 +261,72 @@
     </div>
 
     <div id="toast" class="toast hidden" aria-live="assertive"></div>
+
+    <template id="active-activity-template">
+      <div class="card active-activity-card" data-activity-id="">
+        <div class="status-row">
+          <span class="status-badge ongoing">Sedang Berlangsung</span>
+          <span class="timer">00:00:00</span>
+        </div>
+
+        <form class="activity-form">
+          <div class="field-grid two-column">
+            <label>
+              <span>Kode Inventaris PC/Laptop</span>
+              <input class="inventory-code" type="text" maxlength="50" placeholder="Contoh: PC24059MEB" />
+            </label>
+
+            <label>
+              <span>Nama User</span>
+              <input class="user-name" type="text" maxlength="80" placeholder="Nama user" />
+            </label>
+          </div>
+
+          <div class="field-grid two-column">
+            <label>
+              <span>Lokasi</span>
+              <select class="activity-location"></select>
+            </label>
+
+            <div>
+              <span class="work-code-label">Kode Pengerjaan</span>
+              <div class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
+              <input class="activity-work-code" type="hidden" value="HW" />
+            </div>
+          </div>
+
+          <div class="custom-location-wrap hidden">
+            <label>
+              <span>Lokasi Lain</span>
+              <input class="custom-location-input" type="text" maxlength="80" placeholder="Isi lokasi manual" />
+            </label>
+          </div>
+
+          <label>
+            <span>Keterangan / Remarks</span>
+            <textarea class="activity-remarks" rows="4" maxlength="2000" placeholder="Opsional..."></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button class="primary-btn save-activity-btn" type="submit">Simpan Detail</button>
+            <button class="danger-btn end-activity-btn" type="button">Akhiri Service</button>
+          </div>
+        </form>
+
+        <div class="cancel-activity-control">
+          <button
+            class="secondary-btn cancel-activity-btn"
+            type="button"
+            aria-label="Cancel Aktivitas"
+            title="Cancel Aktivitas"
+          >
+            <svg class="cancel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+          <span class="cancel-activity-label">Cancel Aktivitas</span>
+        </div>
+      </div>
+    </template>
   </body>
 </html>

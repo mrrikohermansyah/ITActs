@@ -5,7 +5,7 @@ import { Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-f
 
 const state = {
   currentUser: null,
-  activeActivity: null,
+  activeActivities: [],
   activities: [],
   unsubscribeActivities: null,
   activityListenerGeneration: 0,
@@ -23,20 +23,9 @@ const ui = {
   topbarUser: document.querySelector('#topbar-user'),
   startActivityBtn: document.querySelector('#start-activity-btn'),
   quickActions: document.querySelector('.quick-actions'),
-  activeActivityCard: document.querySelector('#active-activity-card'),
+  activeActivitiesList: document.querySelector('#active-activities-list'),
+  activeActivityTemplate: document.querySelector('#active-activity-template'),
   emptyActiveState: document.querySelector('#empty-active-state'),
-  statusBadge: document.querySelector('#status-badge'),
-  activityTimer: document.querySelector('#activity-timer'),
-  inventoryCode: document.querySelector('#inventory-code'),
-  userName: document.querySelector('#user-name'),
-  activityLocation: document.querySelector('#activity-location'),
-  activityWorkCode: document.querySelector('#activity-work-code'),
-  workCodeOptions: document.querySelector('#work-code-options'),
-  activityRemarks: document.querySelector('#activity-remarks'),
-  customLocationWrap: document.querySelector('#custom-location-wrap'),
-  customLocationInput: document.querySelector('#custom-location-input'),
-  endActivityBtn: document.querySelector('#end-activity-btn'),
-  activityForm: document.querySelector('#activity-form'),
   loginForm: document.querySelector('#login-form'),
   registerForm: document.querySelector('#register-form'),
   forgotPasswordBtn: document.querySelector('#forgot-password-btn'),
@@ -68,8 +57,6 @@ const ui = {
   confirmModal: document.querySelector('#confirm-modal'),
   confirmEndBtn: document.querySelector('#confirm-end'),
   confirmCancelBtn: document.querySelector('#confirm-cancel'),
-  cancelActivityControl: document.querySelector('#cancel-activity-control'),
-  cancelActivityBtn: document.querySelector('#cancel-activity-btn'),
   cancelConfirmModal: document.querySelector('#cancel-confirm-modal'),
   cancelConfirmBtn: document.querySelector('#cancel-activity-confirm'),
   cancelDismissBtn: document.querySelector('#cancel-activity-dismiss'),
@@ -81,6 +68,8 @@ const ui = {
 let activeTimerLoop = null;
 let openSwipeActivityId = null;
 let pendingDeleteActivityId = null;
+let pendingEndActivityId = null;
+let pendingCancelActivityId = null;
 const pendingSwipeFrames = new WeakMap();
 const pendingSwipePositions = new WeakMap();
 
@@ -195,31 +184,31 @@ function setView(viewName) {
   }
 }
 
-function initSelectOptions() {
-  const populateSelect = (select, options, firstOption) => {
-    select.replaceChildren();
+function populateSelect(select, options, firstOption) {
+  select.replaceChildren();
 
-    if (firstOption) {
-      select.add(new Option(firstOption.label, firstOption.value));
-    }
+  if (firstOption) {
+    select.add(new Option(firstOption.label, firstOption.value));
+  }
 
-    options.forEach((item) => {
-      const value = typeof item === 'string' ? item : item.code;
-      const label = typeof item === 'string' ? item : item.label || item.code;
-      select.add(new Option(label, value));
-    });
-  };
-
-  populateSelect(ui.activityLocation, LOCATION_OPTIONS);
-  populateSelect(ui.filterLocation, LOCATION_OPTIONS, { value: 'all', label: 'Semua Lokasi' });
-  populateSelect(ui.filterWorkCode, WORK_CODES, { value: 'all', label: 'Semua Kode' });
-  renderWorkCodeButtons();
+  options.forEach((item) => {
+    const value = typeof item === 'string' ? item : item.code;
+    const label = typeof item === 'string' ? item : item.label || item.code;
+    select.add(new Option(label, value));
+  });
 }
 
-function renderWorkCodeButtons() {
-  const selectedCodes = normalizeWorkCodes(ui.activityWorkCode.value);
+function initSelectOptions() {
+  populateSelect(ui.filterLocation, LOCATION_OPTIONS, { value: 'all', label: 'Semua Lokasi' });
+  populateSelect(ui.filterWorkCode, WORK_CODES, { value: 'all', label: 'Semua Kode' });
+}
 
-  ui.workCodeOptions.replaceChildren();
+function renderWorkCodeButtonsForCard(card) {
+  const hiddenInput = card.querySelector('.activity-work-code');
+  const container = card.querySelector('.work-code-options');
+  const selectedCodes = normalizeWorkCodes(hiddenInput.value);
+
+  container.replaceChildren();
 
   WORK_CODES.forEach((item) => {
     const code = item.code;
@@ -230,20 +219,20 @@ function renderWorkCodeButtons() {
     button.dataset.workCode = code;
     button.setAttribute('aria-pressed', String(isActive));
     button.textContent = code;
-    ui.workCodeOptions.append(button);
+    container.append(button);
   });
 
-  ui.workCodeOptions.querySelectorAll('.work-code-option').forEach((button) => {
+  container.querySelectorAll('.work-code-option').forEach((button) => {
     button.addEventListener('click', () => {
       const nextValue = button.dataset.workCode;
-      const currentCodes = normalizeWorkCodes(ui.activityWorkCode.value);
+      const currentCodes = normalizeWorkCodes(hiddenInput.value);
       const nextCodes = currentCodes.includes(nextValue)
         ? currentCodes.filter((code) => code !== nextValue)
         : [...currentCodes, nextValue];
 
-      ui.activityWorkCode.value = formatWorkCodes(nextCodes);
-      ui.workCodeOptions.classList.remove('field-invalid');
-      renderWorkCodeButtons();
+      hiddenInput.value = formatWorkCodes(nextCodes);
+      container.classList.remove('field-invalid');
+      renderWorkCodeButtonsForCard(card);
     });
   });
 }
@@ -302,34 +291,71 @@ async function handleEditNameSubmit(event) {
   }
 }
 
-function resetActivityForm() {
-  ui.inventoryCode.value = '';
-  ui.userName.value = '';
-  ui.activityLocation.value = 'REST AREA';
-  ui.activityWorkCode.value = '';
-  ui.activityRemarks.value = '';
-  ui.customLocationInput.value = '';
-  ui.customLocationWrap.classList.add('hidden');
-  renderWorkCodeButtons();
+function toJsDate(value) {
+  if (!value) {
+    return null;
+  }
+  return value.toDate ? value.toDate() : new Date(value);
 }
 
-function updateCustomLocationVisibility() {
-  const selectedLocation = ui.activityLocation.value;
-  ui.customLocationInput.classList.remove('field-invalid');
+function toMillis(value) {
+  const date = toJsDate(value);
+  return date ? date.getTime() : 0;
+}
 
-  if (selectedLocation === 'OTHER LOCATION') {
-    ui.customLocationWrap.classList.remove('hidden');
-    ui.customLocationInput.focus();
+// Local calendar day key (YYYY-MM-DD) using the device's timezone, NOT UTC.
+// Firestore timestamps are absolute instants; toISOString() would shift evening
+// activities in WIB (UTC+7) to the previous day, so we read local date parts.
+function getLocalDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getCard(activityId) {
+  return Array.from(
+    ui.activeActivitiesList.querySelectorAll('.active-activity-card')
+  ).find((card) => card.dataset.activityId === activityId) || null;
+}
+
+function updateCardCustomLocationVisibility(card) {
+  const locationSelect = card.querySelector('.activity-location');
+  const customWrap = card.querySelector('.custom-location-wrap');
+  const customInput = card.querySelector('.custom-location-input');
+
+  customInput.classList.remove('field-invalid');
+
+  if (locationSelect.value === 'OTHER LOCATION') {
+    customWrap.classList.remove('hidden');
+    customInput.focus();
   } else {
-    ui.customLocationWrap.classList.add('hidden');
+    customWrap.classList.add('hidden');
   }
 }
 
-function getActiveActivityFormPayload() {
-  let locationValue = ui.activityLocation.value;
+// Re-populate every location <select> so a newly added custom location becomes
+// selectable, while preserving each control's current value.
+function refreshAllLocationSelects() {
+  const filterCurrent = ui.filterLocation.value;
+  populateSelect(ui.filterLocation, LOCATION_OPTIONS, { value: 'all', label: 'Semua Lokasi' });
+  ui.filterLocation.value = filterCurrent;
+
+  ui.activeActivitiesList.querySelectorAll('.active-activity-card').forEach((card) => {
+    const locationSelect = card.querySelector('.activity-location');
+    const current = locationSelect.value;
+    populateSelect(locationSelect, LOCATION_OPTIONS);
+    locationSelect.value = LOCATION_OPTIONS.includes(current) ? current : 'OTHER LOCATION';
+  });
+}
+
+function getCardFormPayload(card) {
+  const locationSelect = card.querySelector('.activity-location');
+  const customInput = card.querySelector('.custom-location-input');
+  let locationValue = locationSelect.value;
 
   if (locationValue === 'OTHER LOCATION') {
-    const customValue = ui.customLocationInput.value.trim();
+    const customValue = customInput.value.trim();
 
     if (!customValue) {
       throw new Error('Isi lokasi manual jika memilih OTHER LOCATION');
@@ -345,83 +371,193 @@ function getActiveActivityFormPayload() {
 
     LOCATION_OPTIONS.push(customValue);
     locationValue = customValue;
-    initSelectOptions();
-    ui.activityLocation.value = customValue;
+    refreshAllLocationSelects();
+    locationSelect.value = customValue;
+    card.querySelector('.custom-location-wrap').classList.add('hidden');
   }
 
-  const selectedWorkCodes = normalizeWorkCodes(ui.activityWorkCode.value);
+  const selectedWorkCodes = normalizeWorkCodes(card.querySelector('.activity-work-code').value);
 
   if (!selectedWorkCodes.length) {
     throw new Error('Pilih minimal satu kode pengerjaan.');
   }
 
   return {
-    inventoryCode: toUppercaseInventory(ui.inventoryCode.value.trim()),
-    userName: toTitleCase(ui.userName.value.trim()),
+    inventoryCode: toUppercaseInventory(card.querySelector('.inventory-code').value.trim()),
+    userName: toTitleCase(card.querySelector('.user-name').value.trim()),
     location: locationValue,
     workCode: formatWorkCodes(selectedWorkCodes),
-    remarks: ui.activityRemarks.value.trim()
+    remarks: card.querySelector('.activity-remarks').value.trim()
   };
 }
 
-function renderActiveActivity() {
-  const hasOngoingActivity = Boolean(state.activeActivity && state.activeActivity.status === 'ongoing');
-  ui.quickActions.classList.toggle('is-active', hasOngoingActivity);
-  ui.startActivityBtn.classList.toggle('is-active-layout', hasOngoingActivity);
-  ui.cancelActivityControl.classList.toggle('hidden', !hasOngoingActivity);
+function validateCardEndFields(card) {
+  const userNameInput = card.querySelector('.user-name');
+  const customInput = card.querySelector('.custom-location-input');
+  const remarksInput = card.querySelector('.activity-remarks');
+  const workOptions = card.querySelector('.work-code-options');
+  const locationSelect = card.querySelector('.activity-location');
+  const workHidden = card.querySelector('.activity-work-code');
 
-  if (!hasOngoingActivity) {
+  [userNameInput, customInput, remarksInput, workOptions].forEach((element) => {
+    element.classList.remove('field-invalid');
+  });
+
+  const requiredFields = [
+    {
+      element: userNameInput,
+      focusTarget: userNameInput,
+      isEmpty: !(userNameInput.value || '').trim()
+    },
+    {
+      element: customInput,
+      focusTarget: customInput,
+      isEmpty: locationSelect.value === 'OTHER LOCATION'
+        && !(customInput.value || '').trim()
+    },
+    {
+      element: remarksInput,
+      focusTarget: remarksInput,
+      isEmpty: !(remarksInput.value || '').trim()
+    },
+    {
+      element: workOptions,
+      focusTarget: workOptions.querySelector('.work-code-option'),
+      isEmpty: !normalizeWorkCodes(workHidden.value).length
+    }
+  ];
+
+  const firstInvalidField = requiredFields.find((field) => field.isEmpty);
+
+  if (!firstInvalidField) {
+    return true;
+  }
+
+  firstInvalidField.element.classList.add('field-invalid');
+  firstInvalidField.focusTarget?.focus({ preventScroll: true });
+  firstInvalidField.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return false;
+}
+
+function recomputeActiveActivities() {
+  state.activeActivities = state.activities
+    .filter((item) => item.status === 'ongoing')
+    .sort((a, b) => toMillis(a.startedAt) - toMillis(b.startedAt));
+}
+
+function buildActiveActivityCard(activity) {
+  const card = ui.activeActivityTemplate.content.firstElementChild.cloneNode(true);
+  card.dataset.activityId = activity.id;
+
+  const inventoryInput = card.querySelector('.inventory-code');
+  const userNameInput = card.querySelector('.user-name');
+  const locationSelect = card.querySelector('.activity-location');
+  const workCodeHidden = card.querySelector('.activity-work-code');
+  const remarksInput = card.querySelector('.activity-remarks');
+  const customWrap = card.querySelector('.custom-location-wrap');
+  const customInput = card.querySelector('.custom-location-input');
+  const form = card.querySelector('.activity-form');
+  const endBtn = card.querySelector('.end-activity-btn');
+  const cancelBtn = card.querySelector('.cancel-activity-btn');
+  const badge = card.querySelector('.status-badge');
+
+  badge.textContent = 'Sedang Berlangsung';
+  badge.className = 'status-badge ongoing';
+
+  populateSelect(locationSelect, LOCATION_OPTIONS);
+
+  inventoryInput.value = toUppercaseInventory(activity.inventoryCode || '');
+  userNameInput.value = toTitleCase(activity.userName || '');
+
+  const location = activity.location || 'REST AREA';
+  locationSelect.value = LOCATION_OPTIONS.includes(location) ? location : 'OTHER LOCATION';
+
+  if (locationSelect.value === 'OTHER LOCATION') {
+    customInput.value = location;
+    customWrap.classList.remove('hidden');
+  } else {
+    customWrap.classList.add('hidden');
+  }
+
+  workCodeHidden.value = formatWorkCodes(activity.workCode || '');
+  renderWorkCodeButtonsForCard(card);
+  remarksInput.value = activity.remarks || '';
+
+  // Each card is wired to its own document id, so Akhiri / Cancel / Simpan act
+  // on this activity only and never touch the others.
+  form.addEventListener('submit', (event) => handleSaveActivity(event, activity.id));
+  endBtn.addEventListener('click', () => showConfirmModal(activity.id));
+  cancelBtn.addEventListener('click', () => showCancelConfirmation(activity.id));
+  locationSelect.addEventListener('change', () => updateCardCustomLocationVisibility(card));
+  customInput.addEventListener('input', () => customInput.classList.remove('field-invalid'));
+  inventoryInput.addEventListener('input', (event) => {
+    event.target.value = toUppercaseInventory(event.target.value);
+  });
+  userNameInput.addEventListener('input', (event) => {
+    event.target.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
+  });
+  userNameInput.addEventListener('blur', () => {
+    userNameInput.value = toTitleCase(userNameInput.value || '');
+  });
+  remarksInput.addEventListener('input', () => remarksInput.classList.remove('field-invalid'));
+
+  return card;
+}
+
+function renderActiveActivities() {
+  const ongoing = state.activeActivities;
+  const hasOngoing = ongoing.length > 0;
+
+  ui.quickActions.classList.toggle('is-active', hasOngoing);
+  ui.startActivityBtn.classList.toggle('is-active-layout', hasOngoing);
+
+  if (!hasOngoing) {
     ui.startActivityBtn.querySelector('.start-activity-icon').classList.remove('hidden');
     ui.startActivityBtn.querySelector('.start-activity-button-text').classList.add('hidden');
-    ui.startActivityBtn.setAttribute('tabindex', '0');
   } else {
     ui.startActivityBtn.querySelector('.start-activity-icon').classList.add('hidden');
     ui.startActivityBtn.querySelector('.start-activity-button-text').classList.remove('hidden');
-    ui.startActivityBtn.setAttribute('tabindex', '-1');
+  }
+  // Never disabled just because activities are already running: the + button
+  // always starts another activity.
+  ui.startActivityBtn.setAttribute('tabindex', '0');
+
+  ui.emptyActiveState.classList.toggle('hidden', hasOngoing);
+
+  const currentCards = Array.from(
+    ui.activeActivitiesList.querySelectorAll('.active-activity-card')
+  );
+  const currentIds = currentCards.map((card) => card.dataset.activityId);
+  const desiredIds = ongoing.map((activity) => activity.id);
+  const sameOrder = desiredIds.length === currentIds.length
+    && desiredIds.every((id, index) => id === currentIds[index]);
+
+  // Only touch the DOM when the set/order of active activities actually changes.
+  // Existing cards are moved (not rebuilt), so in-progress typing is preserved.
+  if (!sameOrder) {
+    const existing = new Map(currentCards.map((card) => [card.dataset.activityId, card]));
+
+    desiredIds.forEach((id) => {
+      let card = existing.get(id);
+      if (!card) {
+        const activity = ongoing.find((item) => item.id === id);
+        card = buildActiveActivityCard(activity);
+      }
+      ui.activeActivitiesList.append(card);
+    });
+
+    existing.forEach((card, id) => {
+      if (!desiredIds.includes(id)) {
+        card.remove();
+      }
+    });
   }
 
-  if (!state.activeActivity) {
-    ui.activeActivityCard.classList.add('hidden');
-    ui.emptyActiveState.classList.remove('hidden');
-    if (activeTimerLoop) {
-      clearInterval(activeTimerLoop);
-      activeTimerLoop = null;
-    }
-    ui.activityTimer.textContent = '00:00:00';
-    return;
-  }
-
-  ui.emptyActiveState.classList.add('hidden');
-  ui.activeActivityCard.classList.remove('hidden');
-  ui.statusBadge.textContent = state.activeActivity.status === 'ongoing' ? 'Sedang Berlangsung' : 'Selesai';
-  ui.statusBadge.className = `status-badge ${state.activeActivity.status === 'ongoing' ? 'ongoing' : 'completed'}`;
-
-  ui.inventoryCode.value = toUppercaseInventory(state.activeActivity.inventoryCode || '');
-  ui.userName.value = toTitleCase(state.activeActivity.userName || '');
-  ui.activityLocation.value = LOCATION_OPTIONS.includes(state.activeActivity.location)
-    ? state.activeActivity.location
-    : 'OTHER LOCATION';
-
-  if (ui.activityLocation.value === 'OTHER LOCATION') {
-    ui.customLocationInput.value = state.activeActivity.location || '';
-    ui.customLocationWrap.classList.remove('hidden');
+  if (hasOngoing) {
+    ensureTimerLoop();
   } else {
-    ui.customLocationInput.value = '';
-    ui.customLocationWrap.classList.add('hidden');
-  }
-
-  ui.activityWorkCode.value = formatWorkCodes(state.activeActivity.workCode || '');
-  renderWorkCodeButtons();
-  ui.activityRemarks.value = state.activeActivity.remarks || '';
-
-  if (state.activeActivity.status === 'ongoing') {
-    startTimer();
-  } else {
-    if (activeTimerLoop) {
-      clearInterval(activeTimerLoop);
-      activeTimerLoop = null;
-    }
-    ui.activityTimer.textContent = formatClockFromMinutes(state.activeActivity.durationMinutes || 0);
+    stopTimerLoop();
   }
 }
 
@@ -433,37 +569,61 @@ function setActivityUiLoading(isLoading) {
 }
 
 function renderActivityLoadError() {
-  state.activeActivity = null;
+  state.activeActivities = [];
+  stopTimerLoop();
   ui.quickActions.classList.remove('activity-ui-loading');
   ui.quickActions.classList.add('activity-ui-error');
   ui.quickActions.setAttribute('aria-busy', 'false');
   ui.startActivityBtn.disabled = true;
-  ui.activeActivityCard.classList.add('hidden');
+  ui.activeActivitiesList.replaceChildren();
   ui.emptyActiveState.classList.add('hidden');
-  ui.cancelActivityControl.classList.add('hidden');
 }
 
-function startTimer() {
-  if (activeTimerLoop) {
-    clearInterval(activeTimerLoop);
-  }
-
-  activeTimerLoop = setInterval(() => {
-    if (!state.activeActivity || state.activeActivity.status !== 'ongoing') {
-      clearInterval(activeTimerLoop);
-      activeTimerLoop = null;
+function tickActiveTimers() {
+  state.activeActivities.forEach((activity) => {
+    const card = getCard(activity.id);
+    if (!card) {
       return;
     }
 
-    const startedAt = state.activeActivity.startedAt?.toDate ? state.activeActivity.startedAt.toDate() : new Date(state.activeActivity.startedAt);
-    const diffMs = Date.now() - startedAt.getTime();
-    const totalSeconds = Math.floor(diffMs / 1000);
-    ui.activityTimer.textContent = formatClock(totalSeconds);
-  }, 1000);
+    const startedAt = toJsDate(activity.startedAt);
+    if (!startedAt) {
+      return;
+    }
 
-  const startedAt = state.activeActivity.startedAt?.toDate ? state.activeActivity.startedAt.toDate() : new Date(state.activeActivity.startedAt);
-  const diffMs = Date.now() - startedAt.getTime();
-  ui.activityTimer.textContent = formatClock(Math.floor(diffMs / 1000));
+    const totalSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+    card.querySelector('.timer').textContent = formatClock(totalSeconds);
+  });
+}
+
+// A single 1s loop drives every active card's timer, so multiple concurrent
+// activities each tick independently from their own startedAt.
+function ensureTimerLoop() {
+  if (!state.activeActivities.length) {
+    stopTimerLoop();
+    return;
+  }
+
+  tickActiveTimers();
+
+  if (activeTimerLoop) {
+    return;
+  }
+
+  activeTimerLoop = setInterval(() => {
+    if (!state.activeActivities.length) {
+      stopTimerLoop();
+      return;
+    }
+    tickActiveTimers();
+  }, 1000);
+}
+
+function stopTimerLoop() {
+  if (activeTimerLoop) {
+    clearInterval(activeTimerLoop);
+    activeTimerLoop = null;
+  }
 }
 
 function formatClock(totalSeconds) {
@@ -479,11 +639,14 @@ function formatClockFromMinutes(minutes) {
 }
 
 function hasActiveHistoryFilters() {
+  const todayKey = getLocalDateKey(new Date());
+  const dateFilterActive = Boolean(ui.filterDate.value) && ui.filterDate.value !== todayKey;
+
   return Boolean(
     ui.searchInput.value.trim()
     || ui.filterLocation.value !== 'all'
     || ui.filterWorkCode.value !== 'all'
-    || ui.filterDate.value
+    || dateFilterActive
     || ui.filterStatus.value !== 'all'
   );
 }
@@ -569,6 +732,12 @@ function getFilteredHistoryData() {
   const dateFilter = ui.filterDate.value;
   const statusFilter = ui.filterStatus.value;
 
+  // Default (no explicit date picked) shows only TODAY. The comparison uses the
+  // local calendar day, so a WIB evening activity is never pushed to yesterday.
+  // Choosing a date in the filter reveals that day's older activities; the data
+  // itself is never modified or deleted.
+  const targetDateKey = dateFilter || getLocalDateKey(new Date());
+
   return state.activities.filter((item) => {
     if (item.status !== 'completed') {
       return false;
@@ -583,8 +752,8 @@ function getFilteredHistoryData() {
     const matchesWork = workFilter === 'all' || item.workCode === workFilter;
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
 
-    const itemDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
-    const matchesDate = !dateFilter || itemDate.toISOString().slice(0, 10) === dateFilter;
+    const itemDate = toJsDate(item.startedAt);
+    const matchesDate = Boolean(itemDate) && getLocalDateKey(itemDate) === targetDateKey;
 
     return matchesSearch && matchesLocation && matchesWork && matchesDate && matchesStatus;
   });
@@ -753,9 +922,9 @@ async function handleDeleteActivity() {
     await deleteActivity(activityId);
 
     state.activities = state.activities.filter((activity) => activity.id !== activityId);
-    if (state.activeActivity?.id === activityId) {
-      state.activeActivity = null;
-      renderActiveActivity();
+    if (state.activeActivities.some((activity) => activity.id === activityId)) {
+      recomputeActiveActivities();
+      renderActiveActivities();
     }
 
     hideDeleteConfirmation(false);
@@ -1576,15 +1745,15 @@ async function handleStartActivity() {
     return;
   }
 
-  if (state.activeActivity) {
-    showToast('Masih ada aktivitas yang sedang berjalan', 'warning');
-    return;
-  }
+  ui.startActivityBtn.disabled = true;
 
   try {
     console.debug('[Activity] Preparing data...');
     const now = Timestamp.now();
     const initialWorkCode = formatWorkCodes(['HW']);
+    // Each press creates its own Firestore document with its own id, so any
+    // number of activities can run at the same time without overwriting one
+    // another.
     const newActivity = await createActivity({
       userId: state.currentUser.uid,
       inventoryCode: '',
@@ -1596,32 +1765,42 @@ async function handleStartActivity() {
     });
 
     console.debug('[Activity] Save successful', { id: newActivity.id });
+
+    // Optimistic add so the new card shows immediately; the Firestore listener
+    // reconciles by document id, so this never duplicates the card.
+    state.activities = [newActivity, ...state.activities.filter((item) => item.id !== newActivity.id)];
+    recomputeActiveActivities();
+    renderActiveActivities();
+
     showToast('Aktivitas dimulai', 'success');
-    state.activeActivity = newActivity;
-    renderActiveActivity();
   } catch (error) {
     console.error('[Activity] Save failed:', error);
     showToast('Gagal memulai aktivitas', 'error');
+  } finally {
+    ui.startActivityBtn.disabled = false;
   }
 }
 
-async function handleSaveActivity(event) {
+async function handleSaveActivity(event, activityId) {
   event.preventDefault();
 
-  if (!state.activeActivity) {
+  const card = getCard(activityId);
+  const activity = state.activeActivities.find((item) => item.id === activityId);
+
+  if (!card || !activity) {
     showToast('Tidak ada aktivitas aktif', 'warning');
     return;
   }
 
   try {
-    const payload = getActiveActivityFormPayload();
+    const payload = getCardFormPayload(card);
 
     console.debug('[Activity] Saving to Firestore...', {
-      activityId: state.activeActivity.id,
+      activityId,
       fields: Object.keys(payload)
     });
 
-    await updateActivity(state.activeActivity.id, {
+    await updateActivity(activityId, {
       inventoryCode: payload.inventoryCode,
       userName: payload.userName,
       location: payload.location,
@@ -1630,94 +1809,62 @@ async function handleSaveActivity(event) {
     });
 
     console.debug('[Activity] Save successful', {
-      activityId: state.activeActivity.id,
+      activityId,
       workCode: payload.workCode
     });
 
     showToast('Detail service berhasil disimpan.', 'success');
   } catch (error) {
     console.error('[Activity] Save failed:', error);
-    if (error && error.message === 'Pilih minimal satu kode pengerjaan.') {
-      showToast('Pilih minimal satu kode pengerjaan.', 'error');
+    const knownMessages = [
+      'Pilih minimal satu kode pengerjaan.',
+      'Isi lokasi manual jika memilih OTHER LOCATION',
+      'Lokasi sudah ada di daftar lokasi'
+    ];
+    if (error && knownMessages.includes(error.message)) {
+      showToast(error.message, 'error');
       return;
     }
     showToast('Detail service gagal disimpan.', 'error');
   }
 }
 
-function showConfirmModal() {
+function showConfirmModal(activityId) {
+  pendingEndActivityId = activityId;
   ui.confirmModal.classList.remove('hidden');
   ui.confirmModal.setAttribute('aria-hidden', 'false');
 }
 
 function hideConfirmModal() {
+  pendingEndActivityId = null;
   ui.confirmModal.classList.add('hidden');
   ui.confirmModal.setAttribute('aria-hidden', 'true');
 }
 
-function clearEndActivityValidation() {
-  [ui.userName, ui.customLocationInput, ui.activityRemarks, ui.workCodeOptions].forEach((element) => {
-    element.classList.remove('field-invalid');
-  });
-}
-
-function validateEndActivityFields() {
-  clearEndActivityValidation();
-
-  const requiredFields = [
-    {
-      element: ui.userName,
-      focusTarget: ui.userName,
-      isEmpty: !(ui.userName.value || '').trim()
-    },
-    {
-      element: ui.customLocationInput,
-      focusTarget: ui.customLocationInput,
-      isEmpty: ui.activityLocation.value === 'OTHER LOCATION'
-        && !(ui.customLocationInput.value || '').trim()
-    },
-    {
-      element: ui.activityRemarks,
-      focusTarget: ui.activityRemarks,
-      isEmpty: !(ui.activityRemarks.value || '').trim()
-    },
-    {
-      element: ui.workCodeOptions,
-      focusTarget: ui.workCodeOptions.querySelector('.work-code-option'),
-      isEmpty: !normalizeWorkCodes(ui.activityWorkCode.value).length
-    }
-  ];
-
-  const firstInvalidField = requiredFields.find((field) => field.isEmpty);
-
-  if (!firstInvalidField) {
-    return true;
-  }
-
-  firstInvalidField.element.classList.add('field-invalid');
-  firstInvalidField.focusTarget?.focus({ preventScroll: true });
-  firstInvalidField.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  return false;
-}
-
 async function handleEndActivity() {
-  if (!state.activeActivity) {
-    showToast('Tidak ada aktivitas aktif', 'warning');
-    hideConfirmModal();
+  const activityId = pendingEndActivityId;
+  hideConfirmModal();
+
+  if (!activityId) {
     return;
   }
 
-  hideConfirmModal();
+  const card = getCard(activityId);
+  const activity = state.activeActivities.find((item) => item.id === activityId);
 
-  if (!validateEndActivityFields()) {
+  if (!card || !activity) {
+    showToast('Tidak ada aktivitas aktif', 'warning');
+    return;
+  }
+
+  if (!validateCardEndFields(card)) {
     return;
   }
 
   try {
-    const payload = getActiveActivityFormPayload();
-    const selectedWorkCodes = normalizeWorkCodes(ui.activityWorkCode.value);
+    const payload = getCardFormPayload(card);
 
-    await updateActivity(state.activeActivity.id, {
+    await updateActivity(activityId, {
       inventoryCode: payload.inventoryCode,
       userName: payload.userName,
       location: payload.location,
@@ -1726,53 +1873,70 @@ async function handleEndActivity() {
     });
 
     console.debug('[Activity] Confirm end activity', {
-      activityId: state.activeActivity.id,
-      startedAt: state.activeActivity.startedAt,
-      workCodeCount: selectedWorkCodes.length
+      activityId,
+      startedAt: activity.startedAt
     });
 
-    await finishActivity(state.activeActivity.id, state.activeActivity.startedAt);
+    // Ends only this document; other active activities are untouched.
+    await finishActivity(activityId, activity.startedAt);
     console.log('[Activity] Firestore save successful');
-    hideConfirmModal();
     showToast('Service berhasil diakhiri.', 'success');
   } catch (error) {
     console.error('[Activity] Save error:', error);
     console.error('[Activity] Finish failed:', error);
+    const knownMessages = [
+      'Pilih minimal satu kode pengerjaan.',
+      'Isi lokasi manual jika memilih OTHER LOCATION',
+      'Lokasi sudah ada di daftar lokasi'
+    ];
+    if (error && knownMessages.includes(error.message)) {
+      showToast(error.message, 'error');
+      return;
+    }
     showToast('Gagal mengakhiri service. Silakan coba lagi.', 'error');
-    return;
   }
 }
 
-function showCancelConfirmation() {
-  if (!state.activeActivity || state.activeActivity.status !== 'ongoing') {
+function showCancelConfirmation(activityId) {
+  const activity = state.activeActivities.find((item) => item.id === activityId);
+
+  if (!activity) {
     showToast('Tidak ada aktivitas aktif', 'warning');
     return;
   }
 
+  pendingCancelActivityId = activityId;
   ui.cancelConfirmModal.classList.remove('hidden');
   ui.cancelConfirmModal.setAttribute('aria-hidden', 'false');
 }
 
 function hideCancelConfirmation() {
+  pendingCancelActivityId = null;
   ui.cancelConfirmModal.classList.add('hidden');
   ui.cancelConfirmModal.setAttribute('aria-hidden', 'true');
 }
 
 async function handleCancelActivity() {
-  if (!state.activeActivity || state.activeActivity.status !== 'ongoing') {
-    hideCancelConfirmation();
+  const activityId = pendingCancelActivityId;
+  hideCancelConfirmation();
+
+  if (!activityId) {
+    return;
+  }
+
+  const activity = state.activities.find((item) => item.id === activityId);
+
+  if (!activity) {
     showToast('Tidak ada aktivitas aktif', 'warning');
     return;
   }
 
-  const activityId = state.activeActivity.id;
   ui.cancelConfirmBtn.disabled = true;
 
   try {
-    await cancelActivity(activityId, state.activeActivity.startedAt);
-    hideCancelConfirmation();
-    state.activeActivity = null;
-    renderActiveActivity();
+    // Cancels only this document; the listener then drops just this card.
+    // Cancelled activities never enter Riwayat (status !== 'completed').
+    await cancelActivity(activityId, activity.startedAt);
     showToast('Aktivitas berhasil dibatalkan.', 'success');
   } catch (error) {
     console.error('[Activity] Cancel failed:', error);
@@ -1885,9 +2049,8 @@ function handleAuthStateChange(user) {
           return;
         }
         state.activities = items;
-        const ongoing = items.find((item) => item.status === 'ongoing');
-        state.activeActivity = ongoing || null;
-        renderActiveActivity();
+        recomputeActiveActivities();
+        renderActiveActivities();
         renderHistory();
         setActivityUiLoading(false);
       },
@@ -1912,12 +2075,12 @@ function handleAuthStateChange(user) {
   } else {
     setActivityUiLoading(false);
     state.activities = [];
-    state.activeActivity = null;
+    state.activeActivities = [];
+    stopTimerLoop();
+    ui.activeActivitiesList.replaceChildren();
     renderHistory();
     localStorage.removeItem('actlog-current-view');
     setView('auth');
-    ui.activityForm.reset();
-    resetActivityForm();
   }
 }
 
@@ -1956,32 +2119,12 @@ function bindEvents() {
   ui.editNameForm.addEventListener('submit', handleEditNameSubmit);
   ui.editNameCancelBtn.addEventListener('click', hideEditNameModal);
   ui.startActivityBtn.addEventListener('click', handleStartActivity);
-  ui.activityForm.addEventListener('submit', handleSaveActivity);
-  ui.endActivityBtn.addEventListener('click', showConfirmModal);
   ui.confirmEndBtn.addEventListener('click', handleEndActivity);
   ui.confirmCancelBtn.addEventListener('click', hideConfirmModal);
-  ui.cancelActivityBtn.addEventListener('click', showCancelConfirmation);
   ui.cancelConfirmBtn.addEventListener('click', handleCancelActivity);
   ui.cancelDismissBtn.addEventListener('click', hideCancelConfirmation);
-  ui.activityLocation.addEventListener('change', updateCustomLocationVisibility);
-  ui.customLocationInput.addEventListener('input', () => {
-    ui.customLocationInput.classList.remove('field-invalid');
-  });
-  ui.inventoryCode.addEventListener('input', (event) => {
-    event.target.value = toUppercaseInventory(event.target.value);
-  });
-  ui.userName.addEventListener('input', (event) => {
-    event.target.classList.remove('field-invalid');
-    applyTitleCaseInput(event.target);
-  });
-  ui.userName.addEventListener('blur', () => {
-    ui.userName.value = toTitleCase(ui.userName.value || '');
-  });
 
   ui.searchInput.addEventListener('input', renderHistory);
-  ui.activityRemarks.addEventListener('input', () => {
-    ui.activityRemarks.classList.remove('field-invalid');
-  });
   ui.filterLocation.addEventListener('change', renderHistory);
   ui.filterWorkCode.addEventListener('change', renderHistory);
   ui.filterDate.addEventListener('change', renderHistory);

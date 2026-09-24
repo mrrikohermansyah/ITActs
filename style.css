@@ -471,7 +471,20 @@ textarea {
   box-shadow: var(--shadow);
 }
 
-#active-activity-card {
+.active-activities-list {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.active-activities-list:empty {
+  display: none;
+}
+
+.active-activity-card {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -1196,7 +1209,7 @@ textarea {
   }
 
   .auth-card,
-  #active-activity-card,
+  .active-activity-card,
   .toolbar,
   .feed-card {
     border-radius: 14px;
@@ -1213,8 +1226,6 @@ textarea {
   }
 
   .modal-actions > button {
-    min-height: 44px;
-  }
     width: 100%;
     min-height: 44px;
   }
