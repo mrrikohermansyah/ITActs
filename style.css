@@ -671,6 +671,72 @@ textarea {
   }
 }
 
+.history-resume {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 18px;
+  margin-bottom: 20px;
+}
+
+.history-resume-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.history-resume-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.resume-scope {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.history-resume-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resume-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fbff;
+  text-align: center;
+}
+
+.resume-stat-label {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.resume-stat-value {
+  overflow-wrap: anywhere;
+  color: var(--primary);
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
 .toolbar {
   width: 100%;
   max-width: 100%;
@@ -1221,9 +1287,24 @@ textarea {
   .auth-card,
   .active-activity-card,
   .toolbar,
-  .feed-card {
+  .feed-card,
+  .history-resume {
     border-radius: 14px;
     padding: 16px;
+  }
+
+  .history-resume-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .resume-stat {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    text-align: left;
   }
 
   .status-row {

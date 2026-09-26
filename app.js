@@ -52,6 +52,10 @@ const ui = {
   historyFilterReset: document.querySelector('#history-filter-reset'),
   historyFilterApply: document.querySelector('#history-filter-apply'),
   filterActiveIndicator: document.querySelector('.filter-active-indicator'),
+  resumeScope: document.querySelector('#resume-scope'),
+  resumeTotalCount: document.querySelector('#resume-total-count'),
+  resumeTotalDuration: document.querySelector('#resume-total-duration'),
+  resumeTotalMinutes: document.querySelector('#resume-total-minutes'),
   historyList: document.querySelector('#history-list'),
   toast: document.querySelector('#toast'),
   confirmModal: document.querySelector('#confirm-modal'),
@@ -906,9 +910,76 @@ function getFilteredHistoryData() {
   });
 }
 
+// Duration of a single activity in whole minutes. Prefers the durationMinutes
+// field written by finishActivity(); only when it is missing (legacy documents)
+// does it recompute from startedAt/endedAt with the same rounding formula.
+function getActivityDurationMinutes(item) {
+  const stored = Number(item?.durationMinutes);
+
+  if (Number.isFinite(stored) && stored >= 0) {
+    return stored;
+  }
+
+  const startedMs = toMillis(item?.startedAt);
+  const endedMs = toMillis(item?.endedAt);
+
+  if (!startedMs || !endedMs) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((endedMs - startedMs) / 60000));
+}
+
+// "455" -> "7 Jam 35 Menit". Whole hours drop the minutes part ("2 Jam"),
+// a zero total renders as "0 Menit", and sub-hour totals keep the
+// "0 Jam 45 Menit" form.
+function formatResumeDuration(totalMinutes) {
+  const total = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+
+  if (total === 0) {
+    return '0 Menit';
+  }
+
+  if (minutes === 0) {
+    return `${hours} Jam`;
+  }
+
+  return `${hours} Jam ${minutes} Menit`;
+}
+
+function getResumeScopeLabel() {
+  const dateFilter = ui.filterDate.value;
+
+  if (dateFilter) {
+    const date = new Date(`${dateFilter}T00:00:00`);
+    return Number.isNaN(date.getTime())
+      ? dateFilter
+      : new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+  }
+
+  return 'Hari Ini';
+}
+
+// Summary of exactly the activities the history list is showing, so the resume
+// follows the active filter and stays consistent with the rendered feed.
+function renderHistoryResume(filtered) {
+  const totalMinutes = filtered.reduce(
+    (sum, item) => sum + getActivityDurationMinutes(item),
+    0
+  );
+
+  ui.resumeTotalCount.textContent = `${filtered.length} Aktivitas`;
+  ui.resumeTotalDuration.textContent = formatResumeDuration(totalMinutes);
+  ui.resumeTotalMinutes.textContent = `${totalMinutes} Menit`;
+  ui.resumeScope.textContent = getResumeScopeLabel();
+}
+
 function renderHistory() {
   updateHistoryFilterIndicator();
   const filtered = getFilteredHistoryData();
+  renderHistoryResume(filtered);
 
   if (!filtered.length) {
     openSwipeActivityId = null;
