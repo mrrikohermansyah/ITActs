@@ -29,7 +29,7 @@ export async function createActivity(activityPayload) {
     inventoryCode: activityPayload.inventoryCode || '',
     userName: activityPayload.userName || '',
     location: activityPayload.location || '',
-    workCode: activityPayload.workCode || 'HW',
+    workCode: activityPayload.workCode || '',
     remarks: activityPayload.remarks || '',
     startedAt: activityPayload.startedAt || Timestamp.now(),
     endedAt: null,

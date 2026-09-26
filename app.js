@@ -73,6 +73,10 @@ let pendingCancelActivityId = null;
 // Activity ids whose card has unsaved local edits. Remote snapshots must not
 // clobber a card the user is still editing on this device.
 const dirtyActivityCards = new Set();
+
+// Placeholder option for the card location select. Its value is '' so an
+// unpicked location is never a valid location.
+const LOCATION_PLACEHOLDER_OPTION = { value: '', label: 'Pilih Lokasi' };
 const pendingSwipeFrames = new WeakMap();
 const pendingSwipePositions = new WeakMap();
 
@@ -229,6 +233,15 @@ function renderWorkCodeButtonsForCard(card) {
     container.append(button);
   });
 
+  // Initial state for a fresh activity: no code pre-selected, just a hint so
+  // the empty group does not look broken. It disappears once a code is picked.
+  if (!selectedCodes.length) {
+    const hint = document.createElement('span');
+    hint.className = 'work-code-empty-hint';
+    hint.textContent = 'Belum ada kode yang dipilih.';
+    container.append(hint);
+  }
+
   container.querySelectorAll('.work-code-option').forEach((button) => {
     button.addEventListener('click', () => {
       const nextValue = button.dataset.workCode;
@@ -379,13 +392,19 @@ function syncCardFromActivity(card, activity) {
     userNameInput.value = nextUserName;
   }
 
-  const location = activity.location || 'REST AREA';
-  const locationInList = LOCATION_OPTIONS.includes(location);
-  locationSelect.value = locationInList ? location : 'OTHER LOCATION';
-  if (locationInList) {
+  // Mirror buildActiveActivityCard: empty location keeps the placeholder,
+  // known locations select themselves, custom values reveal the manual input.
+  const location = activity.location || '';
+  if (!location) {
+    locationSelect.value = '';
+    customInput.value = '';
+    customWrap.classList.add('hidden');
+  } else if (LOCATION_OPTIONS.includes(location)) {
+    locationSelect.value = location;
     customInput.value = '';
     customWrap.classList.add('hidden');
   } else {
+    locationSelect.value = 'OTHER LOCATION';
     customInput.value = location;
     customWrap.classList.remove('hidden');
   }
@@ -407,6 +426,7 @@ function updateCardCustomLocationVisibility(card) {
   const customWrap = card.querySelector('.custom-location-wrap');
   const customInput = card.querySelector('.custom-location-input');
 
+  locationSelect.classList.remove('field-invalid');
   customInput.classList.remove('field-invalid');
 
   if (locationSelect.value === 'OTHER LOCATION') {
@@ -427,8 +447,11 @@ function refreshAllLocationSelects() {
   ui.activeActivitiesList.querySelectorAll('.active-activity-card').forEach((card) => {
     const locationSelect = card.querySelector('.activity-location');
     const current = locationSelect.value;
-    populateSelect(locationSelect, LOCATION_OPTIONS);
-    locationSelect.value = LOCATION_OPTIONS.includes(current) ? current : 'OTHER LOCATION';
+    populateSelect(locationSelect, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
+    // Keep the placeholder selected when no location has been picked yet.
+    locationSelect.value = !current || LOCATION_OPTIONS.includes(current)
+      ? current
+      : 'OTHER LOCATION';
   });
 }
 
@@ -436,6 +459,10 @@ function getCardFormPayload(card) {
   const locationSelect = card.querySelector('.activity-location');
   const customInput = card.querySelector('.custom-location-input');
   let locationValue = locationSelect.value;
+
+  if (!locationValue) {
+    throw new Error('Pilih lokasi terlebih dahulu.');
+  }
 
   if (locationValue === 'OTHER LOCATION') {
     const customValue = customInput.value.trim();
@@ -482,15 +509,27 @@ function validateCardEndFields(card) {
   const locationSelect = card.querySelector('.activity-location');
   const workHidden = card.querySelector('.activity-work-code');
 
-  [userNameInput, customInput, remarksInput, workOptions].forEach((element) => {
+  [userNameInput, locationSelect, customInput, remarksInput, workOptions].forEach((element) => {
     element.classList.remove('field-invalid');
   });
 
+  // Ordered top-to-bottom like the form layout so when several fields are
+  // empty only the topmost one gets highlighted first.
   const requiredFields = [
     {
       element: userNameInput,
       focusTarget: userNameInput,
       isEmpty: !(userNameInput.value || '').trim()
+    },
+    {
+      element: locationSelect,
+      focusTarget: locationSelect,
+      isEmpty: !locationSelect.value
+    },
+    {
+      element: workOptions,
+      focusTarget: workOptions.querySelector('.work-code-option'),
+      isEmpty: !normalizeWorkCodes(workHidden.value).length
     },
     {
       element: customInput,
@@ -502,11 +541,6 @@ function validateCardEndFields(card) {
       element: remarksInput,
       focusTarget: remarksInput,
       isEmpty: !(remarksInput.value || '').trim()
-    },
-    {
-      element: workOptions,
-      focusTarget: workOptions.querySelector('.work-code-option'),
-      isEmpty: !normalizeWorkCodes(workHidden.value).length
     }
   ];
 
@@ -547,19 +581,27 @@ function buildActiveActivityCard(activity) {
   badge.textContent = 'Sedang Berlangsung';
   badge.className = 'status-badge ongoing';
 
-  populateSelect(locationSelect, LOCATION_OPTIONS);
+  populateSelect(locationSelect, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
 
   inventoryInput.value = toUppercaseInventory(activity.inventoryCode || '');
   userNameInput.value = toTitleCase(activity.userName || '');
 
-  const location = activity.location || 'REST AREA';
-  locationSelect.value = LOCATION_OPTIONS.includes(location) ? location : 'OTHER LOCATION';
-
-  if (locationSelect.value === 'OTHER LOCATION') {
+  // Empty location means the user has not picked one yet: keep the placeholder
+  // selected. Only fall back to OTHER LOCATION when a saved location is a
+  // custom value outside LOCATION_OPTIONS.
+  const location = activity.location || '';
+  if (!location) {
+    locationSelect.value = '';
+    customInput.value = '';
+    customWrap.classList.add('hidden');
+  } else if (LOCATION_OPTIONS.includes(location)) {
+    locationSelect.value = location;
+    customInput.value = '';
+    customWrap.classList.add('hidden');
+  } else {
+    locationSelect.value = 'OTHER LOCATION';
     customInput.value = location;
     customWrap.classList.remove('hidden');
-  } else {
-    customWrap.classList.add('hidden');
   }
 
   workCodeHidden.value = formatWorkCodes(activity.workCode || '');
@@ -1876,16 +1918,17 @@ async function handleStartActivity() {
   try {
     console.debug('[Activity] Preparing data...');
     const now = Timestamp.now();
-    const initialWorkCode = formatWorkCodes(['HW']);
     // Each press creates its own Firestore document with its own id, so any
     // number of activities can run at the same time without overwriting one
-    // another.
+    // another. Location and work code start empty: every new activity is a
+    // fresh form and the user must pick both before the activity can be saved
+    // or ended.
     const newActivity = await createActivity({
       userId: state.currentUser.uid,
       inventoryCode: '',
       userName: '',
-      location: 'REST AREA',
-      workCode: initialWorkCode,
+      location: '',
+      workCode: '',
       remarks: '',
       startedAt: now
     });
@@ -1955,6 +1998,7 @@ async function handleSaveActivity(event, activityId) {
       saveBtn.textContent = 'Simpan Detail';
     }
     const knownMessages = [
+      'Pilih lokasi terlebih dahulu.',
       'Pilih minimal satu kode pengerjaan.',
       'Isi lokasi manual jika memilih OTHER LOCATION',
       'Lokasi sudah ada di daftar lokasi'
@@ -2023,6 +2067,7 @@ async function handleEndActivity() {
     console.error('[Activity] Save error:', error);
     console.error('[Activity] Finish failed:', error);
     const knownMessages = [
+      'Pilih lokasi terlebih dahulu.',
       'Pilih minimal satu kode pengerjaan.',
       'Isi lokasi manual jika memilih OTHER LOCATION',
       'Lokasi sudah ada di daftar lokasi'
