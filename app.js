@@ -1166,7 +1166,12 @@ function getExportCodeValue(item) {
 function getExportRows() {
   return getFilteredHistoryData().map((item) => {
     const startDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
-    const exportDate = Number.isNaN(startDate.getTime()) ? null : startDate;
+    // ExcelJS derives the serial from UTC milliseconds, so rebuild the local
+    // calendar day at UTC midnight: the cell holds a whole-day serial with no
+    // time-of-day part and the Tgl. / Date column shows only DD/MM/YYYY.
+    const exportDate = Number.isNaN(startDate.getTime())
+      ? null
+      : new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()));
     const durationMinutes = item.durationMinutes ?? null;
     const durationValue = durationMinutes != null ? formatDuration(durationMinutes) : '';
     const remarks = String(item.remarks || '');
