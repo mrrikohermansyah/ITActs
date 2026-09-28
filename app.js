@@ -21,6 +21,7 @@ const ui = {
   profileView: document.querySelector('#profile-view'),
   pageTitle: document.querySelector('#page-title'),
   topbarUser: document.querySelector('#topbar-user'),
+  bottomNav: document.querySelector('.bottom-nav'),
   startActivityBtn: document.querySelector('#start-activity-btn'),
   quickActions: document.querySelector('.quick-actions'),
   activeActivitiesList: document.querySelector('#active-activities-list'),
@@ -84,6 +85,22 @@ const dirtyActivityCards = new Set();
 const LOCATION_PLACEHOLDER_OPTION = { value: '', label: 'Pilih Lokasi' };
 const pendingSwipeFrames = new WeakMap();
 const pendingSwipePositions = new WeakMap();
+
+// Bottom navigation auto-hide. The breakpoint matches the one that reveals
+// .bottom-nav in style.css, so desktop never runs any of this.
+const BOTTOM_NAV_MEDIA_QUERY = '(max-width: 900px)';
+// Movement smaller than this is accumulated rather than applied, so a 1px
+// jitter or a brief gesture reversal cannot flip the bar in and out.
+const BOTTOM_NAV_SCROLL_THRESHOLD = 8;
+// Fractional scroll offsets settle just above 0 on iOS; a small tolerance keeps
+// the "at the top the bar is always visible" rule from getting stuck.
+const BOTTOM_NAV_TOP_TOLERANCE = 2;
+
+const bottomNavMedia = window.matchMedia(BOTTOM_NAV_MEDIA_QUERY);
+let bottomNavHidden = false;
+let bottomNavWasMobile = bottomNavMedia.matches;
+let bottomNavLastScrollY = window.scrollY;
+let bottomNavFrameQueued = false;
 
 function toUppercaseInventory(value) {
   return String(value || '').toUpperCase();
@@ -158,6 +175,62 @@ function showToast(message, type = 'success') {
   }, 2500);
 }
 
+function setBottomNavHidden(isHidden) {
+  if (bottomNavHidden === isHidden) {
+    return;
+  }
+  bottomNavHidden = isHidden;
+  ui.bottomNav.classList.toggle('nav-hidden', isHidden);
+}
+
+function updateBottomNavOnScroll() {
+  bottomNavFrameQueued = false;
+
+  if (!bottomNavMedia.matches) {
+    return;
+  }
+
+  const currentScrollY = window.scrollY;
+
+  if (currentScrollY <= BOTTOM_NAV_TOP_TOLERANCE) {
+    bottomNavLastScrollY = currentScrollY;
+    setBottomNavHidden(false);
+    return;
+  }
+
+  const delta = currentScrollY - bottomNavLastScrollY;
+
+  // lastScrollY is deliberately not advanced here: sub-threshold movement keeps
+  // accumulating until the gesture is clearly directional in one way or the other.
+  if (Math.abs(delta) < BOTTOM_NAV_SCROLL_THRESHOLD) {
+    return;
+  }
+
+  bottomNavLastScrollY = currentScrollY;
+  setBottomNavHidden(delta > 0);
+}
+
+// Rotating a tablet can cross the 900px breakpoint while the bar is tucked away.
+// Without this the class would survive until the next upward scroll.
+function syncBottomNavWithViewport() {
+  const isMobile = bottomNavMedia.matches;
+
+  if (isMobile === bottomNavWasMobile) {
+    return;
+  }
+
+  bottomNavWasMobile = isMobile;
+  bottomNavLastScrollY = window.scrollY;
+  setBottomNavHidden(false);
+}
+
+// Switching tabs changes the document height, which can clamp scrollY under us.
+// Re-anchoring here keeps the bar usable and stops it vanishing mid-navigation.
+function resetBottomNavForViewChange() {
+  bottomNavLastScrollY = window.scrollY;
+  setBottomNavHidden(false);
+}
+
 function setView(viewName) {
   state.currentView = viewName;
 
@@ -198,6 +271,9 @@ function setView(viewName) {
   if (viewName !== 'loading' && viewName !== 'auth') {
     localStorage.setItem('actlog-current-view', viewName);
   }
+
+  // Runs after the panel swap so window.scrollY is read post-clamping.
+  resetBottomNavForViewChange();
 }
 
 function populateSelect(select, options, firstOption) {
@@ -2379,6 +2455,19 @@ function bindEvents() {
       setView(nextView);
     });
   });
+
+  // The media-query guard sits in the listener itself so desktop scroll events
+  // never even schedule a frame. rAF coalesces the burst of events a mobile
+  // flick produces into one state evaluation per painted frame.
+  window.addEventListener('scroll', () => {
+    if (bottomNavFrameQueued || !bottomNavMedia.matches) {
+      return;
+    }
+    bottomNavFrameQueued = true;
+    requestAnimationFrame(updateBottomNavOnScroll);
+  }, { passive: true });
+
+  window.addEventListener('resize', syncBottomNavWithViewport, { passive: true });
 
   document.querySelector('.tab-btn[data-auth-tab="login"]').addEventListener('click', () => {
     document.querySelector('#login-form').classList.remove('hidden');
