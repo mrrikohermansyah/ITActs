@@ -12,6 +12,9 @@
   --danger: #ef4444;
   --success: #10b981;
   --warning: #f59e0b;
+  --excel: #217346;
+  --excel-dark: #185a37;
+  --excel-soft: rgba(33, 115, 70, 0.12);
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   --radius: 18px;
 }
@@ -753,9 +756,13 @@ textarea {
 }
 
 .toolbar-title {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
   font-size: 0.92rem;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-filter-toggle {
@@ -799,45 +806,100 @@ textarea {
   transform: scale(1);
 }
 
-.history-menu-panel {
-  display: grid;
+.toolbar-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 12px;
-  padding: 10px 10px 8px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.015);
-  animation: filter-panel-enter 180ms ease both;
+  flex: 0 0 auto;
 }
 
-.history-menu-panel[hidden] {
-  display: none;
+.excel-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--excel), var(--excel-dark));
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(33, 115, 70, 0.22);
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
-.history-menu-option {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  font: inherit;
-  font-size: 0.92rem;
-  font-weight: 600;
+.excel-export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(33, 115, 70, 0.28);
+}
+
+.excel-export-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 4px 12px rgba(33, 115, 70, 0.22);
+}
+
+.excel-export-btn:focus-visible {
+  outline: 3px solid rgba(33, 115, 70, 0.3);
+  outline-offset: 2px;
+}
+
+.excel-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.filter-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  cursor: pointer;
+  min-height: 36px;
 }
 
-.history-menu-option:hover,
-.history-menu-option:focus-visible {
-  background: var(--primary-soft);
-  border-color: rgba(37, 99, 235, 0.15);
+.filter-panel-title {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.filter-close-button {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 50%;
+  color: var(--text-soft);
+  transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.filter-close-button:hover,
+.filter-close-button:focus-visible {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
   outline: none;
+}
+
+.filter-close-button:active {
+  transform: scale(0.94);
+}
+
+.filter-close-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .history-filter-panel {
@@ -875,11 +937,37 @@ textarea {
   }
 }
 
+.filter-date-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.filter-field {
+  min-width: 0;
+}
+
+.filter-field span {
+  margin-bottom: 6px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.filter-field input[type="date"] {
+  min-height: 45px;
+}
+
+.filter-date-separator {
+  padding-bottom: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .toolbar-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 14px;
 }
 
 .feed-list {
@@ -1323,6 +1411,25 @@ textarea {
 
   .cancel-activity-control {
     margin-top: 24px;
+  }
+
+  .filter-date-range {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .filter-date-separator {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .excel-export-label {
+    display: none;
+  }
+
+  .excel-export-btn {
+    padding: 0 12px;
   }
 }
 

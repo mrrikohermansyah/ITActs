@@ -165,19 +165,49 @@
           <div class="toolbar card">
             <div class="toolbar-header">
               <span class="toolbar-title">Filter Riwayat</span>
-              <button id="history-filter-toggle" class="icon-button history-filter-toggle" type="button" aria-expanded="false" aria-controls="history-menu-panel" aria-label="Buka menu riwayat" title="Menu riwayat">
-                <span class="filter-active-indicator" aria-hidden="true"></span>
-                <span aria-hidden="true">⋮</span>
-              </button>
-            </div>
 
-            <div id="history-menu-panel" class="history-menu-panel" hidden>
-              <button id="history-menu-filter" class="history-menu-option" type="button">Filter Riwayat</button>
-              <button id="history-export-btn" class="history-menu-option" type="button">Export Report Excel <span aria-hidden="true">📊</span></button>
+              <div class="toolbar-actions">
+                <button id="history-filter-toggle" class="icon-button history-filter-toggle" type="button" aria-expanded="false" aria-controls="history-filter-panel" aria-label="Buka filter riwayat" title="Filter">
+                  <span class="filter-active-indicator" aria-hidden="true"></span>
+                  <span aria-hidden="true">⋮</span>
+                </button>
+
+                <button id="history-export-btn" class="excel-export-btn" type="button" aria-label="Export Excel" title="Export Excel">
+                  <svg class="excel-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <path d="M3 9h18M3 14.5h18M9 9v11M15 9v11" />
+                  </svg>
+                  <span class="excel-export-label">Excel</span>
+                </button>
+              </div>
             </div>
 
             <div id="history-filter-panel" class="history-filter-panel" hidden>
+              <div class="filter-panel-header">
+                <span class="filter-panel-title">Filter</span>
+                <button id="history-filter-close" class="icon-button filter-close-button" type="button" aria-label="Tutup filter" title="Tutup filter">
+                  <svg class="filter-close-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              </div>
+
               <input id="search-input" type="search" placeholder="Cari nama user atau kode inventaris..." />
+
+              <div class="filter-date-range">
+                <label class="filter-field">
+                  <span>Dari</span>
+                  <input id="filter-date-from" type="date" />
+                </label>
+
+                <span class="filter-date-separator" aria-hidden="true">&ndash;</span>
+
+                <label class="filter-field">
+                  <span>Sampai</span>
+                  <input id="filter-date-to" type="date" />
+                </label>
+              </div>
+
               <div class="toolbar-grid">
                 <select id="filter-location">
                   <option value="all">Semua Lokasi</option>
@@ -187,13 +217,12 @@
                   <option value="all">Semua Kode</option>
                 </select>
 
-                <input id="filter-date" type="date" />
-
                 <select id="filter-status">
                   <option value="all">Semua Status</option>
                   <option value="completed">Selesai</option>
                 </select>
               </div>
+
               <div class="filter-panel-actions">
                 <button id="history-filter-reset" class="secondary-btn" type="button">Reset</button>
                 <button id="history-filter-apply" class="primary-btn" type="button">Terapkan</button>

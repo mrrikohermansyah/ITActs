@@ -42,11 +42,12 @@ const ui = {
   searchInput: document.querySelector('#search-input'),
   filterLocation: document.querySelector('#filter-location'),
   filterWorkCode: document.querySelector('#filter-workcode'),
-  filterDate: document.querySelector('#filter-date'),
+  filterDateFrom: document.querySelector('#filter-date-from'),
+  filterDateTo: document.querySelector('#filter-date-to'),
   filterStatus: document.querySelector('#filter-status'),
+  historyToolbar: document.querySelector('#history-view .toolbar'),
   historyFilterToggle: document.querySelector('#history-filter-toggle'),
-  historyMenuPanel: document.querySelector('#history-menu-panel'),
-  historyMenuFilter: document.querySelector('#history-menu-filter'),
+  historyFilterClose: document.querySelector('#history-filter-close'),
   historyExportBtn: document.querySelector('#history-export-btn'),
   historyFilterPanel: document.querySelector('#history-filter-panel'),
   historyFilterReset: document.querySelector('#history-filter-reset'),
@@ -790,14 +791,12 @@ function formatClockFromMinutes(minutes) {
 }
 
 function hasActiveHistoryFilters() {
-  const todayKey = getLocalDateKey(new Date());
-  const dateFilterActive = Boolean(ui.filterDate.value) && ui.filterDate.value !== todayKey;
-
   return Boolean(
     ui.searchInput.value.trim()
     || ui.filterLocation.value !== 'all'
     || ui.filterWorkCode.value !== 'all'
-    || dateFilterActive
+    || ui.filterDateFrom.value
+    || ui.filterDateTo.value
     || ui.filterStatus.value !== 'all'
   );
 }
@@ -808,20 +807,14 @@ function updateHistoryFilterIndicator() {
   ui.filterActiveIndicator.setAttribute('aria-hidden', String(!isActive));
 }
 
-function setHistoryMenuPanelOpen(isOpen) {
-  ui.historyFilterToggle.setAttribute('aria-expanded', String(isOpen));
-  ui.historyFilterToggle.setAttribute('aria-label', isOpen ? 'Tutup menu riwayat' : 'Buka menu riwayat');
-  ui.historyMenuPanel.hidden = !isOpen;
-}
-
+// Opening/closing only toggles visibility: the filter values themselves live in
+// the inputs, so dismissing the panel keeps whatever the user already picked.
 function setHistoryFilterPanelOpen(isOpen) {
   ui.historyFilterPanel.hidden = !isOpen;
   ui.historyFilterPanel.classList.toggle('is-open', isOpen);
-}
-
-function closeHistoryPanels() {
-  setHistoryMenuPanelOpen(false);
-  setHistoryFilterPanelOpen(false);
+  ui.historyFilterToggle.setAttribute('aria-expanded', String(isOpen));
+  ui.historyFilterToggle.setAttribute('aria-label', isOpen ? 'Tutup filter riwayat' : 'Buka filter riwayat');
+  ui.historyFilterToggle.title = isOpen ? 'Tutup filter' : 'Filter';
 }
 
 function isExcelJSAvailable() {
@@ -880,14 +873,16 @@ function getFilteredHistoryData() {
   const searchText = ui.searchInput.value.trim().toLowerCase();
   const locationFilter = ui.filterLocation.value;
   const workFilter = ui.filterWorkCode.value;
-  const dateFilter = ui.filterDate.value;
   const statusFilter = ui.filterStatus.value;
+  const fromKey = ui.filterDateFrom.value;
+  const toKey = ui.filterDateTo.value;
 
-  // Default (no explicit date picked) shows only TODAY. The comparison uses the
+  // Both date fields empty falls back to TODAY only. The comparison uses the
   // local calendar day, so a WIB evening activity is never pushed to yesterday.
-  // Choosing a date in the filter reveals that day's older activities; the data
-  // itself is never modified or deleted.
-  const targetDateKey = dateFilter || getLocalDateKey(new Date());
+  // Either bound may be used alone, and both ends are inclusive. Filtering only
+  // narrows the view; the data itself is never modified or deleted.
+  const todayKey = getLocalDateKey(new Date());
+  const hasRange = Boolean(fromKey || toKey);
 
   return state.activities.filter((item) => {
     if (item.status !== 'completed') {
@@ -904,7 +899,16 @@ function getFilteredHistoryData() {
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
 
     const itemDate = toJsDate(item.startedAt);
-    const matchesDate = Boolean(itemDate) && getLocalDateKey(itemDate) === targetDateKey;
+
+    if (!itemDate) {
+      return false;
+    }
+
+    // Local date keys are YYYY-MM-DD, so plain string comparison is chronological.
+    const itemDateKey = getLocalDateKey(itemDate);
+    const matchesDate = hasRange
+      ? (!fromKey || itemDateKey >= fromKey) && (!toKey || itemDateKey <= toKey)
+      : itemDateKey === todayKey;
 
     return matchesSearch && matchesLocation && matchesWork && matchesDate && matchesStatus;
   });
@@ -949,14 +953,32 @@ function formatResumeDuration(totalMinutes) {
   return `${hours} Jam ${minutes} Menit`;
 }
 
-function getResumeScopeLabel() {
-  const dateFilter = ui.filterDate.value;
+// 'YYYY-MM-DD' -> '25 Sep 2026'. Parsed at local midnight so the label never
+// drifts a day the way a UTC parse of a bare date string would.
+function formatDateKeyLabel(dateKey) {
+  const date = new Date(`${dateKey}T00:00:00`);
 
-  if (dateFilter) {
-    const date = new Date(`${dateFilter}T00:00:00`);
-    return Number.isNaN(date.getTime())
-      ? dateFilter
-      : new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+  return Number.isNaN(date.getTime())
+    ? dateKey
+    : new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
+
+function getResumeScopeLabel() {
+  const fromKey = ui.filterDateFrom.value;
+  const toKey = ui.filterDateTo.value;
+
+  if (fromKey && toKey) {
+    return fromKey === toKey
+      ? formatDateKeyLabel(fromKey)
+      : `${formatDateKeyLabel(fromKey)} - ${formatDateKeyLabel(toKey)}`;
+  }
+
+  if (fromKey) {
+    return `Sejak ${formatDateKeyLabel(fromKey)}`;
+  }
+
+  if (toKey) {
+    return `Sampai ${formatDateKeyLabel(toKey)}`;
   }
 
   return 'Hari Ini';
@@ -1304,9 +1326,13 @@ function getExportRows() {
 }
 
 function getExportPeriodLabel() {
-  const activeDate = ui.filterDate.value;
-  if (activeDate) {
-    const date = new Date(`${activeDate}T00:00:00`);
+  // Month-granularity label used for the "Periode" cell and the file name.
+  // Anchored on the earliest explicit date bound so an empty result set still
+  // reports the period the user asked for.
+  const anchorKey = ui.filterDateFrom.value || ui.filterDateTo.value;
+
+  if (anchorKey) {
+    const date = new Date(`${anchorKey}T00:00:00`);
     if (!Number.isNaN(date.getTime())) {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
@@ -2382,32 +2408,46 @@ function bindEvents() {
   ui.searchInput.addEventListener('input', renderHistory);
   ui.filterLocation.addEventListener('change', renderHistory);
   ui.filterWorkCode.addEventListener('change', renderHistory);
-  ui.filterDate.addEventListener('change', renderHistory);
+  ui.filterDateFrom.addEventListener('change', renderHistory);
+  ui.filterDateTo.addEventListener('change', renderHistory);
   ui.filterStatus.addEventListener('change', renderHistory);
+
   ui.historyFilterToggle.addEventListener('click', () => {
-    const isOpen = ui.historyMenuPanel && !ui.historyMenuPanel.hidden;
-    setHistoryMenuPanelOpen(!isOpen);
+    setHistoryFilterPanelOpen(ui.historyFilterPanel.hidden);
   });
-  ui.historyMenuFilter.addEventListener('click', () => {
-    setHistoryMenuPanelOpen(false);
-    setHistoryFilterPanelOpen(true);
+  ui.historyFilterClose.addEventListener('click', () => {
+    setHistoryFilterPanelOpen(false);
   });
   ui.historyExportBtn.addEventListener('click', () => {
-    setHistoryMenuPanelOpen(false);
     exportExcel();
   });
   ui.historyFilterApply.addEventListener('click', () => {
     renderHistory();
-    closeHistoryPanels();
+    setHistoryFilterPanelOpen(false);
   });
+  // Reset clears the inputs only; the panel stays open so a new range can be
+  // picked straight away without reopening it.
   ui.historyFilterReset.addEventListener('click', () => {
     ui.searchInput.value = '';
     ui.filterLocation.value = 'all';
     ui.filterWorkCode.value = 'all';
-    ui.filterDate.value = '';
+    ui.filterDateFrom.value = '';
+    ui.filterDateTo.value = '';
     ui.filterStatus.value = 'all';
     renderHistory();
-    closeHistoryPanels();
+  });
+
+  document.addEventListener('click', (event) => {
+    if (ui.historyFilterPanel.hidden || ui.historyToolbar.contains(event.target)) {
+      return;
+    }
+    setHistoryFilterPanelOpen(false);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !ui.historyFilterPanel.hidden) {
+      setHistoryFilterPanelOpen(false);
+    }
   });
 
   ui.confirmModal.addEventListener('click', (event) => {

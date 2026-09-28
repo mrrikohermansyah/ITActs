@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'actlog-static-v7';
+const CACHE_VERSION = 'actlog-static-v8';
 const APP_SHELL = [
   './',
   './index.html',
