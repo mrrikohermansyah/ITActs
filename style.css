@@ -1663,12 +1663,15 @@ body.nav-hidden .add-activity-fab {
 
 /* WebKit can propagate a temporal input's intrinsic width up through flex and
    grid ancestors; every flex/grid child must stay shrinkable so the card
-   itself can never widen. */
+   itself can never widen. These labels are the field wrappers that own the
+   width — the inputs inside resolve against them. */
 .manual-entry-step,
 .manual-entry-step > *,
 .manual-time-grid > label {
-  min-width: 0;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .manual-entry-step .modal-actions {
@@ -1976,13 +1979,16 @@ body.nav-hidden .add-activity-fab {
     gap: 12px;
   }
 
-  /* iOS renders date/time inputs at an intrinsic width that overflows the
-     card when stretched; on phones let them keep their native compact size
-     inside the full-width label (max-width: 100% from the base rule clamps
-     the box, so overflow is impossible either way). */
+  /* iOS UA lays temporal inputs out as inline-flex with intrinsic content
+     width — that is what made the fields unequal and able to outgrow the
+     card when stretched. Switching the box to display:block removes the
+     intrinsic behavior entirely, so width:100% resolves cleanly against the
+     wrapper and all three fields match the form width. Appearance is left
+     native: calendar/clock indicator and the wheel picker are untouched. */
   .manual-entry-card input[type="date"],
   .manual-entry-card input[type="time"] {
-    width: auto;
+    display: block;
+    width: 100%;
   }
 
   .manual-ongoing-toggle {
