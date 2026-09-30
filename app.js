@@ -69,7 +69,10 @@ const ui = {
   cancelDismissBtn: document.querySelector('#cancel-activity-dismiss'),
   deleteConfirmModal: document.querySelector('#delete-confirm-modal'),
   deleteConfirmBtn: document.querySelector('#delete-confirm'),
-  deleteCancelBtn: document.querySelector('#delete-cancel')
+  deleteCancelBtn: document.querySelector('#delete-cancel'),
+  logoutConfirmModal: document.querySelector('#logout-confirm-modal'),
+  logoutConfirmBtn: document.querySelector('#logout-confirm'),
+  logoutCancelBtn: document.querySelector('#logout-cancel')
 };
 
 let activeTimerLoop = null;
@@ -86,6 +89,17 @@ const dirtyActivityCards = new Set();
 const LOCATION_PLACEHOLDER_OPTION = { value: '', label: 'Pilih Lokasi' };
 const pendingSwipeFrames = new WeakMap();
 const pendingSwipePositions = new WeakMap();
+
+// Cards that are currently playing their exit animation. They stay in the DOM
+// (and in their original slot) until the collapse finishes, then get removed.
+const exitingActiveActivityIds = new Set();
+// Exit animations last 300ms; the timer is only a fallback for cases where
+// transitionend never fires (display:none, reduced motion, ...).
+const EXIT_ANIMATION_MS = 300;
+const EXIT_ANIMATION_FALLBACK_MS = EXIT_ANIMATION_MS + 120;
+// Set while a Riwayat card is collapsing, so snapshot-driven re-renders cannot
+// wipe the animation away mid-flight.
+let historyRemovalInFlight = false;
 
 // Bottom navigation auto-hide. The breakpoint matches the one that reveals
 // .bottom-nav in style.css, so desktop never runs any of this.
@@ -750,11 +764,14 @@ function buildActiveActivityCard(activity) {
 function renderActiveActivities() {
   const ongoing = state.activeActivities;
   const hasOngoing = ongoing.length > 0;
+  // A card that is still collapsing out keeps the dashboard in its "activity
+  // running" look until it is gone, so nothing pops during the animation.
+  const showActiveLayout = hasOngoing || exitingActiveActivityIds.size > 0;
 
-  ui.quickActions.classList.toggle('is-active', hasOngoing);
-  ui.startActivityBtn.classList.toggle('is-active-layout', hasOngoing);
+  ui.quickActions.classList.toggle('is-active', showActiveLayout);
+  ui.startActivityBtn.classList.toggle('is-active-layout', showActiveLayout);
 
-  if (!hasOngoing) {
+  if (!showActiveLayout) {
     ui.startActivityBtn.querySelector('.start-activity-icon').classList.remove('hidden');
     ui.startActivityBtn.querySelector('.start-activity-button-text').classList.add('hidden');
   } else {
@@ -765,13 +782,18 @@ function renderActiveActivities() {
   // always starts another activity.
   ui.startActivityBtn.setAttribute('tabindex', '0');
 
-  ui.emptyActiveState.classList.toggle('hidden', hasOngoing);
-  ui.addActivityFab.classList.toggle('visible', hasOngoing);
+  ui.emptyActiveState.classList.toggle('hidden', showActiveLayout);
+  ui.addActivityFab.classList.toggle('visible', showActiveLayout);
 
   const currentCards = Array.from(
     ui.activeActivitiesList.querySelectorAll('.active-activity-card')
   );
-  const currentIds = currentCards.map((card) => card.dataset.activityId);
+  // Cards mid exit-animation are already gone from state, so they are ignored
+  // when checking the order; they keep their slot via the re-insert below.
+  const activeCards = currentCards.filter(
+    (card) => !exitingActiveActivityIds.has(card.dataset.activityId)
+  );
+  const currentIds = activeCards.map((card) => card.dataset.activityId);
   const desiredIds = ongoing.map((activity) => activity.id);
   const sameOrder = desiredIds.length === currentIds.length
     && desiredIds.every((id, index) => id === currentIds[index]);
@@ -791,9 +813,25 @@ function renderActiveActivities() {
     });
 
     existing.forEach((card, id) => {
-      if (!desiredIds.includes(id)) {
-        card.remove();
+      if (!desiredIds.includes(id) && !exitingActiveActivityIds.has(id)) {
+        exitActiveActivityCard(card, id);
       }
+    });
+
+    // Appending reorders the list, so put every still-animating card back in the
+    // slot it had, right before the next card that is still active.
+    currentCards.forEach((card) => {
+      const activityId = card.dataset.activityId;
+      if (!exitingActiveActivityIds.has(activityId)) {
+        return;
+      }
+
+      const index = currentCards.indexOf(card);
+      const nextActive = currentCards
+        .slice(index + 1)
+        .find((other) => !exitingActiveActivityIds.has(other.dataset.activityId));
+
+      ui.activeActivitiesList.insertBefore(card, nextActive || null);
     });
   }
 
@@ -817,6 +855,47 @@ function renderActiveActivities() {
   } else {
     stopTimerLoop();
   }
+}
+
+// Cancel/removal exit for one activity card: it fades and collapses vertically
+// (the style lives in .active-activity-card.is-removing) while the cards below
+// rise smoothly, and is only taken out of the DOM once the collapse is done.
+function exitActiveActivityCard(card, activityId) {
+  if (exitingActiveActivityIds.has(activityId)) {
+    return;
+  }
+
+  exitingActiveActivityIds.add(activityId);
+
+  const listGap = parseFloat(getComputedStyle(ui.activeActivitiesList).rowGap) || 0;
+
+  card.style.maxHeight = `${card.offsetHeight}px`;
+  void card.offsetHeight;
+  card.classList.add('is-removing');
+
+  requestAnimationFrame(() => {
+    card.style.maxHeight = '0px';
+    card.style.marginBottom = `-${listGap}px`;
+  });
+
+  let finished = false;
+  const finish = () => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    card.remove();
+    exitingActiveActivityIds.delete(activityId);
+    // Re-render so the empty state / + button follow once the card is gone.
+    renderActiveActivities();
+  };
+
+  card.addEventListener('transitionend', (event) => {
+    if (event.propertyName === 'max-height') {
+      finish();
+    }
+  });
+  window.setTimeout(finish, EXIT_ANIMATION_FALLBACK_MS);
 }
 
 function setActivityUiLoading(isLoading) {
@@ -1107,6 +1186,12 @@ function renderHistoryResume(filtered) {
 }
 
 function renderHistory() {
+  // A card is collapsing right now: leave the list alone until it is out of the
+  // DOM, otherwise a snapshot-driven re-render would cut the animation short.
+  if (historyRemovalInFlight) {
+    return;
+  }
+
   updateHistoryFilterIndicator();
   const filtered = getFilteredHistoryData();
   renderHistoryResume(filtered);
@@ -1233,6 +1318,51 @@ function closeSwipeItems(exceptId = null) {
   openSwipeActivityId = exceptId;
 }
 
+// Delete exit for one Riwayat card: it fades, drifts slightly left and collapses
+// (see .swipe-item.is-removing) so the cards below rise smoothly. Resolves once
+// the node is really out of the DOM.
+function animateHistoryItemRemoval(activityId) {
+  const item = ui.historyList.querySelector(`[data-activity-id="${activityId}"]`);
+
+  if (!item) {
+    return Promise.resolve();
+  }
+
+  historyRemovalInFlight = true;
+  cancelPendingSwipeFrame(item);
+
+  const listGap = parseFloat(getComputedStyle(ui.historyList).rowGap) || 0;
+
+  item.style.maxHeight = `${item.offsetHeight}px`;
+  void item.offsetHeight;
+  item.classList.add('is-removing');
+
+  requestAnimationFrame(() => {
+    item.style.maxHeight = '0px';
+    item.style.marginBottom = `-${listGap}px`;
+  });
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      item.remove();
+      historyRemovalInFlight = false;
+      resolve();
+    };
+
+    item.addEventListener('transitionend', (event) => {
+      if (event.propertyName === 'max-height') {
+        finish();
+      }
+    });
+    window.setTimeout(finish, EXIT_ANIMATION_FALLBACK_MS);
+  });
+}
+
 function openDeleteConfirmation(activityId) {
   pendingDeleteActivityId = activityId;
   ui.deleteConfirmModal.classList.remove('hidden');
@@ -1269,13 +1399,17 @@ async function handleDeleteActivity() {
     console.log('[History] Confirmed delete for Firestore document:', activityId);
     await deleteActivity(activityId);
 
+    // Close the dialog first so the user sees the card leave, then let it
+    // collapse before the list (and the resume numbers) re-render around it.
+    hideDeleteConfirmation(false);
+    await animateHistoryItemRemoval(activityId);
+
     state.activities = state.activities.filter((activity) => activity.id !== activityId);
     if (state.activeActivities.some((activity) => activity.id === activityId)) {
       recomputeActiveActivities();
       renderActiveActivities();
     }
 
-    hideDeleteConfirmation(false);
     renderHistory();
     showToast('Aktivitas berhasil dihapus.', 'success');
   } catch (error) {
@@ -2400,7 +2534,19 @@ async function onForgotPassword() {
   }
 }
 
+function showLogoutConfirmation() {
+  ui.logoutConfirmModal.classList.remove('hidden');
+  ui.logoutConfirmModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideLogoutConfirmation() {
+  ui.logoutConfirmModal.classList.add('hidden');
+  ui.logoutConfirmModal.setAttribute('aria-hidden', 'true');
+}
+
 async function handleLogout() {
+  hideLogoutConfirmation();
+
   try {
     await logoutUser();
     showToast('Berhasil logout', 'success');
@@ -2521,7 +2667,14 @@ function bindEvents() {
   ui.loginForm.addEventListener('submit', onLogin);
   ui.registerForm.addEventListener('submit', onRegister);
   ui.forgotPasswordBtn.addEventListener('click', onForgotPassword);
-  ui.logoutBtn.addEventListener('click', handleLogout);
+  ui.logoutBtn.addEventListener('click', showLogoutConfirmation);
+  ui.logoutConfirmBtn.addEventListener('click', handleLogout);
+  ui.logoutCancelBtn.addEventListener('click', hideLogoutConfirmation);
+  ui.logoutConfirmModal.addEventListener('click', (event) => {
+    if (event.target === ui.logoutConfirmModal) {
+      hideLogoutConfirmation();
+    }
+  });
   ui.editNameBtn.addEventListener('click', showEditNameModal);
   ui.editNameForm.addEventListener('submit', handleEditNameSubmit);
   ui.editNameCancelBtn.addEventListener('click', hideEditNameModal);

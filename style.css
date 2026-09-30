@@ -537,6 +537,24 @@ body.nav-hidden .add-activity-fab {
   box-shadow: var(--shadow);
 }
 
+/* Only replays when the dashboard flips from "has cards" to "empty" (i.e. when
+   .hidden, display:none, is removed), so the placeholder fades in instead of
+   popping the moment the last card finishes collapsing. */
+#empty-active-state:not(.hidden) {
+  animation: emptyStateEnter 240ms ease;
+}
+
+@keyframes emptyStateEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 .active-activities-list {
   width: 100%;
   max-width: 100%;
@@ -576,6 +594,19 @@ body.nav-hidden .add-activity-fab {
 
 .active-activity-card.activity-new {
   animation: activityCardFocus 500ms ease;
+}
+
+/* Cancel exit: fade + vertical collapse so the cards below rise smoothly.
+   JS sets the start height (inline max-height) and removes the node once the
+   collapse ends. */
+.active-activity-card.is-removing {
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    opacity 240ms ease,
+    max-height 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    margin-bottom 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 /* Mobile: compact the activity card vertically so a whole activity fits in
@@ -689,6 +720,10 @@ body.nav-hidden .add-activity-fab {
     .active-activity-card .form-actions .primary-btn,
     .active-activity-card .form-actions .danger-btn {
       font-size: 0.85rem;
+    }
+
+    .resume-stat-value {
+      font-size: 0.8rem;
     }
   }
 
@@ -891,16 +926,16 @@ body.nav-hidden .add-activity-fab {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 18px;
-  margin-bottom: 20px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
 }
 
 .history-resume-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .history-resume-title {
@@ -915,42 +950,45 @@ body.nav-hidden .add-activity-fab {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 5px 11px;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 
 .history-resume-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .resume-stat {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 12px;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 8px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: #f8fbff;
   text-align: center;
 }
 
 .resume-stat-label {
   color: var(--text-soft);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .resume-stat-value {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   color: var(--primary);
-  font-size: 1.02rem;
+  font-size: 0.98rem;
   font-weight: 800;
+  line-height: 1.2;
 }
 
 .toolbar {
@@ -1296,6 +1334,20 @@ body.nav-hidden .add-activity-fab {
   100% { transform: translateY(-50%) scale(1); }
 }
 
+/* Delete exit: fade + slight left drift + height collapse so the cards below
+   rise smoothly. JS sets the start height (inline max-height) and removes the
+   node once the collapse ends. */
+.swipe-item.is-removing {
+  opacity: 0;
+  transform: translateX(-18px);
+  pointer-events: none;
+  transition:
+    opacity 260ms ease,
+    transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    max-height 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    margin-bottom 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
 .feed-card {
   padding: 18px;
 }
@@ -1603,18 +1655,46 @@ body.nav-hidden .add-activity-fab {
     padding: 16px;
   }
 
+  /* Resume: keep the three figures on one compact row instead of three stacked
+     blocks, so the card stays short on a phone. */
+  .history-resume {
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+
+  .history-resume-header {
+    margin-bottom: 8px;
+  }
+
+  .resume-scope {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+  }
+
   .history-resume-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    /* Wider middle column keeps "3 Jam 25 Menit" on one line on iPhone-width
+       screens; the outer chips only ever hold short values. */
+    grid-template-columns: 1fr 1.3fr 1fr;
+    gap: 6px;
   }
 
   .resume-stat {
-    flex-direction: row;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 12px 14px;
-    text-align: left;
+    justify-content: center;
+    gap: 2px;
+    padding: 7px 4px;
+    text-align: center;
+  }
+
+  .resume-stat-label {
+    font-size: 0.66rem;
+    line-height: 1.15;
+  }
+
+  .resume-stat-value {
+    font-size: 0.86rem;
+    line-height: 1.2;
   }
 
   .status-row {
