@@ -1634,15 +1634,24 @@ body.nav-hidden .add-activity-fab {
 
 /* Native date/time inputs: iOS centers the value — left-align it to match the
    other fields. 1rem (16px) font stops Safari iOS auto-zoom on focus; 48px
-   min-height is a comfortable thumb target. */
+   min-height is a comfortable thumb target. Safari renders temporal inputs as
+   inline-flex with intrinsic sizing and can grow them past their container, so
+   pin width/min-width/max-width explicitly (the scoped rule outranks any UA
+   sizing) and clip the internal editor instead of letting it spill past the
+   card edge. */
 .manual-entry-card input[type="date"],
 .manual-entry-card input[type="time"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   text-align: left;
   font-size: 1rem;
   min-height: 48px;
-  padding-right: 44px;
+  padding-right: 40px;
+  overflow: hidden;
   background-repeat: no-repeat;
-  background-position: right 14px center;
+  background-position: right 12px center;
   background-size: 18px 18px;
 }
 
@@ -1671,6 +1680,14 @@ body.nav-hidden .add-activity-fab {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* WebKit can propagate a temporal input's intrinsic width up through flex
+   ancestors; let every wrapper shrink so the card itself can never widen. */
+.manual-entry-step,
+.manual-entry-step > label {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .manual-entry-step .modal-actions {
