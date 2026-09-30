@@ -1632,13 +1632,8 @@ body.nav-hidden .add-activity-fab {
   color: var(--text-soft);
 }
 
-/* Native date/time inputs: iOS centers the value — left-align it to match the
-   other fields. 1rem (16px) font stops Safari iOS auto-zoom on focus; 48px
-   min-height is a comfortable thumb target. Safari renders temporal inputs as
-   inline-flex with intrinsic sizing and can grow them past their container, so
-   pin width/min-width/max-width explicitly (the scoped rule outranks any UA
-   sizing) and clip the internal editor instead of letting it spill past the
-   card edge. */
+/* Native date/time inputs: 16px font stops Safari iOS auto-zoom on focus;
+   48px min-height is a comfortable thumb target. */
 .manual-entry-card input[type="date"],
 .manual-entry-card input[type="time"] {
   width: 100%;
@@ -1648,23 +1643,19 @@ body.nav-hidden .add-activity-fab {
   text-align: left;
   font-size: 1rem;
   min-height: 48px;
-  padding-right: 40px;
   overflow: hidden;
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 18px 18px;
 }
 
-/* iOS-only (-webkit-touch-callout is unimplemented elsewhere): Safari date/time
-   inputs ship without any picker indicator, so add a decorative calendar/clock
-   icon. Chromium keeps its native indicator — no double icon on desktop. */
+/* iOS-only (-webkit-touch-callout is unimplemented elsewhere): WebKit lays out
+   temporal inputs as inline-flex with intrinsic min-content width and can grow
+   them past their container even with width:100%; resetting appearance is the
+   documented fix that lets the width constraints win. The native wheel picker
+   is untouched — tapping the field still opens it. */
 @supports (-webkit-touch-callout: none) {
-  .manual-entry-card input[type="date"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa0c1' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2.5'/%3E%3Cpath d='M3.5 9.5h17M8 3v4M16 3v4'/%3E%3C/svg%3E");
-  }
-
+  .manual-entry-card input[type="date"],
   .manual-entry-card input[type="time"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238aa0c1' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='M12 7.5V12l3 2'/%3E%3C/svg%3E");
+    -webkit-appearance: none;
+    appearance: none;
   }
 }
 
@@ -1682,10 +1673,12 @@ body.nav-hidden .add-activity-fab {
   gap: 14px;
 }
 
-/* WebKit can propagate a temporal input's intrinsic width up through flex
-   ancestors; let every wrapper shrink so the card itself can never widen. */
+/* WebKit can propagate a temporal input's intrinsic width up through flex and
+   grid ancestors; every flex/grid child must stay shrinkable so the card
+   itself can never widen. */
 .manual-entry-step,
-.manual-entry-step > label {
+.manual-entry-step > *,
+.manual-time-grid > label {
   min-width: 0;
   max-width: 100%;
 }
