@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -7,6 +6,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   Timestamp,
   updateDoc,
   where
@@ -17,7 +17,13 @@ import { firebaseApp } from './config.js';
 export const db = getFirestore(firebaseApp);
 export const activitiesRef = collection(db, 'activities');
 
-export async function createActivity(activityPayload) {
+export function generateActivityId() {
+  return doc(activitiesRef).id;
+}
+
+// `activityId` lets manual entries reuse one id across retries so a failed
+// attempt is overwritten instead of duplicated (spec: no double records).
+export async function createActivity(activityPayload, activityId = null) {
   const currentUser = auth.currentUser;
 
   if (!currentUser) {
@@ -34,8 +40,11 @@ export async function createActivity(activityPayload) {
     startedAt: activityPayload.startedAt || Timestamp.now(),
     endedAt: null,
     durationMinutes: null,
-    status: 'ongoing'
+    status: 'ongoing',
+    source: activityPayload.source || 'live_activity'
   };
+
+  const ref = activityId ? doc(activitiesRef, activityId) : doc(activitiesRef);
 
   // console.debug('[Firestore] createActivity -> write requested', {
   //   userId: currentUser.uid,
@@ -43,11 +52,20 @@ export async function createActivity(activityPayload) {
   // });
 
   try {
-    const ref = await addDoc(activitiesRef, payload);
+    await setDoc(ref, payload);
     // console.log('[Activity] Firestore save successful', { id: ref.id });
     console.debug('[Firestore] createActivity -> success', { id: ref.id, status: payload.status });
     return { id: ref.id, ...payload };
   } catch (error) {
+    // Older rules reject the unknown `source` key via hasOnly(); retry once
+    // without it so logging keeps working while the new rules are deployed.
+    if (error?.code === 'permission-denied') {
+      const { source, ...payloadWithoutSource } = payload;
+      console.warn('[Firestore] createActivity -> retrying without "source"; deploy the updated firestore.rules to store it.');
+      await setDoc(ref, payloadWithoutSource);
+      console.debug('[Firestore] createActivity -> success (without source)', { id: ref.id });
+      return { id: ref.id, ...payloadWithoutSource };
+    }
     console.error('[Activity] Save error:', error);
     console.error('[Firestore] createActivity -> failed', error);
     throw error;

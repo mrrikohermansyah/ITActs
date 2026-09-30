@@ -1,6 +1,6 @@
 import { WORK_CODES, LOCATION_OPTIONS } from './config.js';
 import { auth, loginUser, logoutUser, registerUser, resetPassword, subscribeToAuth, updateCurrentUserDisplayName } from './auth.js';
-import { cancelActivity, createActivity, deleteActivity, finishActivity, subscribeToActivities, updateActivity } from './firestore.js';
+import { cancelActivity, createActivity, deleteActivity, finishActivity, generateActivityId, subscribeToActivities, updateActivity } from './firestore.js';
 import { Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const state = {
@@ -72,7 +72,42 @@ const ui = {
   deleteCancelBtn: document.querySelector('#delete-cancel'),
   logoutConfirmModal: document.querySelector('#logout-confirm-modal'),
   logoutConfirmBtn: document.querySelector('#logout-confirm'),
-  logoutCancelBtn: document.querySelector('#logout-cancel')
+  logoutCancelBtn: document.querySelector('#logout-cancel'),
+  activityChoiceModal: document.querySelector('#activity-choice-modal'),
+  choiceStartNowBtn: document.querySelector('#choice-start-now-btn'),
+  choiceManualEntryBtn: document.querySelector('#choice-manual-entry-btn'),
+  activityChoiceCancel: document.querySelector('#activity-choice-cancel'),
+  manualEntryModal: document.querySelector('#manual-entry-modal'),
+  manualEntryCard: document.querySelector('#manual-entry-modal .modal-card'),
+  manualEntryForm: document.querySelector('#manual-entry-form'),
+  manualEntryStepLabel: document.querySelector('#manual-entry-step-label'),
+  manualEntryDate: document.querySelector('#manual-entry-date'),
+  manualEntryStartTime: document.querySelector('#manual-entry-start-time'),
+  manualEntryEndTime: document.querySelector('#manual-entry-end-time'),
+  manualEntryOngoing: document.querySelector('#manual-entry-ongoing'),
+  manualEntryDurationPreview: document.querySelector('#manual-entry-duration-preview'),
+  manualEntryCancelBtn: document.querySelector('#manual-entry-cancel'),
+  manualEntryTimeNextBtn: document.querySelector('#manual-entry-time-next'),
+  manualEntryUserName: document.querySelector('#manual-entry-user-name'),
+  manualEntryLocation: document.querySelector('#manual-entry-location'),
+  manualEntryCustomLocationWrap: document.querySelector('#manual-entry-custom-location-wrap'),
+  manualEntryCustomLocation: document.querySelector('#manual-entry-custom-location'),
+  manualEntryInventory: document.querySelector('#manual-entry-inventory'),
+  manualEntryWorkCodeOptions: document.querySelector('#manual-entry-work-code-options'),
+  manualEntryWorkCode: document.querySelector('#manual-entry-work-code'),
+  manualEntryRemarks: document.querySelector('#manual-entry-remarks'),
+  manualEntryDetailsBackBtn: document.querySelector('#manual-entry-details-back'),
+  manualEntryDetailsNextBtn: document.querySelector('#manual-entry-details-next'),
+  manualEntryReviewBackBtn: document.querySelector('#manual-entry-review-back'),
+  manualEntrySaveBtn: document.querySelector('#manual-entry-save'),
+  manualReviewDate: document.querySelector('#manual-review-date'),
+  manualReviewTime: document.querySelector('#manual-review-time'),
+  manualReviewDuration: document.querySelector('#manual-review-duration'),
+  manualReviewUser: document.querySelector('#manual-review-user'),
+  manualReviewLocation: document.querySelector('#manual-review-location'),
+  manualReviewInventory: document.querySelector('#manual-review-inventory'),
+  manualReviewWorkCode: document.querySelector('#manual-review-work-code'),
+  manualReviewRemarks: document.querySelector('#manual-review-remarks')
 };
 
 let activeTimerLoop = null;
@@ -83,6 +118,14 @@ let pendingCancelActivityId = null;
 // Activity ids whose card has unsaved local edits. Remote snapshots must not
 // clobber a card the user is still editing on this device.
 const dirtyActivityCards = new Set();
+
+// Manual entries that are mid-write (created as 'ongoing', completed by a second
+// write). They must never surface as an active card while the write is in flight.
+const manualEntryFinalizingIds = new Set();
+let manualEntryStep = 'time';
+let manualEntrySubmitting = false;
+let manualEntryDraftId = null;
+let manualEntryDetails = null;
 
 // Placeholder option for the card location select. Its value is '' so an
 // unpicked location is never a valid location.
@@ -311,9 +354,7 @@ function initSelectOptions() {
   populateSelect(ui.filterWorkCode, WORK_CODES, { value: 'all', label: 'Semua Kode' });
 }
 
-function renderWorkCodeButtonsForCard(card) {
-  const hiddenInput = card.querySelector('.activity-work-code');
-  const container = card.querySelector('.work-code-options');
+function renderWorkCodeButtons(container, hiddenInput, onChange) {
   const selectedCodes = normalizeWorkCodes(hiddenInput.value);
 
   container.replaceChildren();
@@ -349,10 +390,20 @@ function renderWorkCodeButtonsForCard(card) {
 
       hiddenInput.value = formatWorkCodes(nextCodes);
       container.classList.remove('field-invalid');
-      markCardDirty(card.dataset.activityId);
-      renderWorkCodeButtonsForCard(card);
+      if (onChange) {
+        onChange();
+      }
+      renderWorkCodeButtons(container, hiddenInput, onChange);
     });
   });
+}
+
+function renderWorkCodeButtonsForCard(card) {
+  renderWorkCodeButtons(
+    card.querySelector('.work-code-options'),
+    card.querySelector('.activity-work-code'),
+    () => markCardDirty(card.dataset.activityId)
+  );
 }
 
 function renderUserHeader() {
@@ -573,6 +624,12 @@ function refreshAllLocationSelects() {
       ? current
       : 'OTHER LOCATION';
   });
+
+  const manualCurrent = ui.manualEntryLocation.value;
+  populateSelect(ui.manualEntryLocation, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
+  ui.manualEntryLocation.value = !manualCurrent || LOCATION_OPTIONS.includes(manualCurrent)
+    ? manualCurrent
+    : 'OTHER LOCATION';
 }
 
 function getCardFormPayload(card) {
@@ -683,8 +740,19 @@ function validateCardEndFields(card) {
 }
 
 function recomputeActiveActivities() {
+  // A manual entry is created as 'ongoing' before it is completed, so it stays
+  // hidden until that second write lands. Once the stored document tells us the
+  // write settled (or the document is gone), the guard entry is dropped.
+  manualEntryFinalizingIds.forEach((id) => {
+    const stored = state.activities.find((item) => item.id === id);
+
+    if (!stored || stored.status !== 'ongoing') {
+      manualEntryFinalizingIds.delete(id);
+    }
+  });
+
   state.activeActivities = state.activities
-    .filter((item) => item.status === 'ongoing')
+    .filter((item) => item.status === 'ongoing' && !manualEntryFinalizingIds.has(item.id))
     .sort((a, b) => toMillis(a.startedAt) - toMillis(b.startedAt));
 }
 
@@ -909,6 +977,7 @@ function setActivityUiLoading(isLoading) {
 function renderActivityLoadError() {
   state.activeActivities = [];
   dirtyActivityCards.clear();
+  manualEntryFinalizingIds.clear();
   stopTimerLoop();
   ui.quickActions.classList.remove('activity-ui-loading');
   ui.quickActions.classList.add('activity-ui-error');
@@ -2246,6 +2315,426 @@ function formatDateTime(dateValue) {
   }).format(date);
 }
 
+/* --- Catat Aktivitas Sebelumnya (manual entry) ---------------------------- */
+
+const MANUAL_ENTRY_STEP_META = {
+  time: 'Langkah 1 dari 3 · Waktu Service',
+  details: 'Langkah 2 dari 3 · Detail Service',
+  review: 'Langkah 3 dari 3 · Konfirmasi'
+};
+
+const MANUAL_ENTRY_DEFAULT_OFFSET_MINUTES = 30;
+
+// Today's clock time 30 minutes ago as a `HH:MM` value. A reasonable starting
+// point the user can still correct before saving.
+function getManualEntryDefaultStartTime(now) {
+  const minutes = Math.max(0, now.getHours() * 60 + now.getMinutes() - MANUAL_ENTRY_DEFAULT_OFFSET_MINUTES);
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  return `${String(hours).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+function getManualEntryTimes() {
+  const dateValue = ui.manualEntryDate.value;
+  const startValue = ui.manualEntryStartTime.value;
+  const endValue = ui.manualEntryEndTime.value;
+  const isOngoing = ui.manualEntryOngoing.checked;
+  const startDate = dateValue && startValue ? new Date(`${dateValue}T${startValue}`) : null;
+  const endDate = dateValue && endValue ? new Date(`${dateValue}T${endValue}`) : null;
+
+  return {
+    dateValue,
+    startValue,
+    endValue,
+    isOngoing,
+    startDate: startDate && !Number.isNaN(startDate.getTime()) ? startDate : null,
+    endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : null
+  };
+}
+
+// Same rounding as finishActivity(), so a manual duration can never disagree
+// with the duration of an activity that was started and ended live.
+function getManualEntryDurationMinutes(times) {
+  if (!times.startDate) {
+    return 0;
+  }
+
+  const endMs = times.isOngoing ? Date.now() : times.endDate?.getTime();
+
+  if (!endMs) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((endMs - times.startDate.getTime()) / 60000));
+}
+
+function updateManualEntryDurationPreview() {
+  const times = getManualEntryTimes();
+
+  if (!times.startDate || (!times.isOngoing && (!times.endDate || times.endDate.getTime() <= times.startDate.getTime()))) {
+    ui.manualEntryDurationPreview.textContent = '-';
+    return;
+  }
+
+  const label = formatDuration(getManualEntryDurationMinutes(times));
+  ui.manualEntryDurationPreview.textContent = times.isOngoing ? `${label} (berlangsung)` : label;
+}
+
+function clearManualEntryInvalidFields() {
+  ui.manualEntryDate.classList.remove('field-invalid');
+  ui.manualEntryStartTime.classList.remove('field-invalid');
+  ui.manualEntryEndTime.classList.remove('field-invalid');
+  ui.manualEntryUserName.classList.remove('field-invalid');
+  ui.manualEntryLocation.classList.remove('field-invalid');
+  ui.manualEntryCustomLocation.classList.remove('field-invalid');
+  ui.manualEntryInventory.classList.remove('field-invalid');
+  ui.manualEntryWorkCodeOptions.classList.remove('field-invalid');
+  ui.manualEntryRemarks.classList.remove('field-invalid');
+}
+
+function validateManualEntryTimes() {
+  clearManualEntryInvalidFields();
+
+  const times = getManualEntryTimes();
+
+  if (!times.dateValue) {
+    showToast('Pilih tanggal aktivitas terlebih dahulu.', 'error');
+    ui.manualEntryDate.classList.add('field-invalid');
+    ui.manualEntryDate.focus({ preventScroll: true });
+    return false;
+  }
+
+  if (!times.startValue) {
+    showToast('Isi waktu mulai aktivitas.', 'error');
+    ui.manualEntryStartTime.classList.add('field-invalid');
+    ui.manualEntryStartTime.focus({ preventScroll: true });
+    return false;
+  }
+
+  if (!times.isOngoing && !times.endValue) {
+    showToast('Isi waktu selesai atau centang Aktivitas masih berlangsung.', 'error');
+    ui.manualEntryEndTime.classList.add('field-invalid');
+    ui.manualEntryEndTime.focus({ preventScroll: true });
+    return false;
+  }
+
+  if (!times.isOngoing && (!times.endDate || times.endDate.getTime() <= times.startDate.getTime())) {
+    showToast('Waktu selesai harus lebih besar dari waktu mulai.', 'error');
+    ui.manualEntryEndTime.classList.add('field-invalid');
+    ui.manualEntryEndTime.focus({ preventScroll: true });
+    return false;
+  }
+
+  return true;
+}
+
+function validateManualEntryDetails() {
+  clearManualEntryInvalidFields();
+
+  // Ordered top-to-bottom like the form so when several fields are empty only
+  // the topmost one gets highlighted first.
+  const requiredFields = [
+    {
+      element: ui.manualEntryUserName,
+      focusTarget: ui.manualEntryUserName,
+      isEmpty: !ui.manualEntryUserName.value.trim()
+    },
+    {
+      element: ui.manualEntryLocation,
+      focusTarget: ui.manualEntryLocation,
+      isEmpty: !ui.manualEntryLocation.value
+    },
+    {
+      element: ui.manualEntryInventory,
+      focusTarget: ui.manualEntryInventory,
+      isEmpty: !ui.manualEntryInventory.value.trim()
+    },
+    {
+      element: ui.manualEntryWorkCodeOptions,
+      focusTarget: ui.manualEntryWorkCodeOptions.querySelector('.work-code-option'),
+      isEmpty: !normalizeWorkCodes(ui.manualEntryWorkCode.value).length
+    },
+    {
+      element: ui.manualEntryRemarks,
+      focusTarget: ui.manualEntryRemarks,
+      isEmpty: !ui.manualEntryRemarks.value.trim()
+    }
+  ];
+
+  const firstInvalidField = requiredFields.find((field) => field.isEmpty);
+
+  if (firstInvalidField) {
+    firstInvalidField.element.classList.add('field-invalid');
+    firstInvalidField.focusTarget?.focus({ preventScroll: true });
+    firstInvalidField.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  }
+
+  if (ui.manualEntryLocation.value === 'OTHER LOCATION') {
+    const customValue = ui.manualEntryCustomLocation.value.trim();
+
+    if (!customValue) {
+      ui.manualEntryCustomLocation.classList.add('field-invalid');
+      ui.manualEntryCustomLocation.focus({ preventScroll: true });
+      showToast('Isi lokasi manual jika memilih OTHER LOCATION', 'error');
+      return false;
+    }
+
+    const exists = LOCATION_OPTIONS.some((item) => item.toLowerCase() === customValue.toLowerCase());
+
+    if (exists) {
+      ui.manualEntryCustomLocation.classList.add('field-invalid');
+      ui.manualEntryCustomLocation.focus({ preventScroll: true });
+      showToast('Lokasi sudah ada di daftar lokasi', 'error');
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function readManualEntryDetails() {
+  const locationValue = ui.manualEntryLocation.value;
+  let location = locationValue;
+
+  if (!locationValue) {
+    throw new Error('Pilih lokasi terlebih dahulu.');
+  }
+
+  if (locationValue === 'OTHER LOCATION') {
+    const customValue = ui.manualEntryCustomLocation.value.trim();
+
+    if (!customValue) {
+      throw new Error('Isi lokasi manual jika memilih OTHER LOCATION');
+    }
+
+    const exists = LOCATION_OPTIONS.some((item) => item.toLowerCase() === customValue.toLowerCase());
+
+    if (exists) {
+      throw new Error('Lokasi sudah ada di daftar lokasi');
+    }
+
+    LOCATION_OPTIONS.push(customValue);
+    location = customValue;
+    refreshAllLocationSelects();
+    ui.manualEntryLocation.value = customValue;
+    ui.manualEntryCustomLocationWrap.classList.add('hidden');
+  }
+
+  const selectedWorkCodes = normalizeWorkCodes(ui.manualEntryWorkCode.value);
+
+  if (!selectedWorkCodes.length) {
+    throw new Error('Pilih minimal satu kode pengerjaan.');
+  }
+
+  return {
+    inventoryCode: toUppercaseInventory(ui.manualEntryInventory.value.trim()),
+    userName: toTitleCase(ui.manualEntryUserName.value.trim()),
+    location,
+    workCode: formatWorkCodes(selectedWorkCodes),
+    remarks: ui.manualEntryRemarks.value.trim()
+  };
+}
+
+function updateManualEntryCustomLocationVisibility() {
+  const isCustom = ui.manualEntryLocation.value === 'OTHER LOCATION';
+
+  ui.manualEntryLocation.classList.remove('field-invalid');
+  ui.manualEntryCustomLocation.classList.remove('field-invalid');
+  ui.manualEntryCustomLocationWrap.classList.toggle('hidden', !isCustom);
+
+  if (isCustom) {
+    ui.manualEntryCustomLocation.focus();
+  }
+}
+
+function handleManualEntryOngoingToggle() {
+  const isOngoing = ui.manualEntryOngoing.checked;
+
+  ui.manualEntryEndTime.disabled = isOngoing;
+  ui.manualEntryEndTime.classList.remove('field-invalid');
+
+  if (isOngoing) {
+    ui.manualEntryEndTime.value = '';
+  }
+
+  updateManualEntryDurationPreview();
+}
+
+function setManualEntryStep(step) {
+  manualEntryStep = step;
+
+  ui.manualEntryCard.querySelectorAll('.manual-entry-step').forEach((section) => {
+    section.classList.toggle('hidden', section.dataset.step !== step);
+  });
+
+  ui.manualEntryStepLabel.textContent = MANUAL_ENTRY_STEP_META[step] || '';
+  ui.manualEntryCard.scrollTop = 0;
+}
+
+function renderManualEntryReview(details) {
+  const times = getManualEntryTimes();
+  const durationLabel = formatDuration(getManualEntryDurationMinutes(times));
+
+  ui.manualReviewDate.textContent = times.dateValue ? formatDateKeyLabel(times.dateValue) : '-';
+  ui.manualReviewTime.textContent = times.isOngoing
+    ? `${times.startValue} - masih berlangsung`
+    : `${times.startValue} - ${times.endValue}`;
+  ui.manualReviewDuration.textContent = times.isOngoing ? `${durationLabel} (berlangsung)` : durationLabel;
+  ui.manualReviewUser.textContent = details.userName || '-';
+  ui.manualReviewLocation.textContent = details.location || '-';
+  ui.manualReviewInventory.textContent = details.inventoryCode || '-';
+  ui.manualReviewWorkCode.textContent = details.workCode || '-';
+  ui.manualReviewRemarks.textContent = details.remarks || '-';
+}
+
+function openActivityChoiceModal() {
+  if (!state.currentUser) {
+    showToast('Silakan login terlebih dahulu', 'error');
+    return;
+  }
+
+  ui.activityChoiceModal.classList.remove('hidden');
+  ui.activityChoiceModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideActivityChoiceModal() {
+  ui.activityChoiceModal.classList.add('hidden');
+  ui.activityChoiceModal.setAttribute('aria-hidden', 'true');
+}
+
+function openManualEntryModal() {
+  if (!state.currentUser) {
+    showToast('Silakan login terlebih dahulu', 'error');
+    return;
+  }
+
+  const now = new Date();
+
+  ui.manualEntryForm.reset();
+  manualEntrySubmitting = false;
+  manualEntryDetails = null;
+  // One id per modal session: a retry after a failed write overwrites the same
+  // document instead of creating a second record.
+  manualEntryDraftId = generateActivityId();
+  ui.manualEntrySaveBtn.disabled = false;
+  ui.manualEntrySaveBtn.textContent = 'Simpan Aktivitas';
+
+  ui.manualEntryDate.value = getLocalDateKey(now);
+  ui.manualEntryStartTime.value = getManualEntryDefaultStartTime(now);
+  ui.manualEntryEndTime.value = '';
+  ui.manualEntryEndTime.disabled = false;
+  ui.manualEntryOngoing.checked = false;
+
+  populateSelect(ui.manualEntryLocation, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
+  ui.manualEntryLocation.value = '';
+  ui.manualEntryCustomLocation.value = '';
+  ui.manualEntryCustomLocationWrap.classList.add('hidden');
+  ui.manualEntryWorkCode.value = '';
+  renderWorkCodeButtons(ui.manualEntryWorkCodeOptions, ui.manualEntryWorkCode, null);
+
+  clearManualEntryInvalidFields();
+  updateManualEntryDurationPreview();
+  setManualEntryStep('time');
+
+  ui.manualEntryModal.classList.remove('hidden');
+  ui.manualEntryModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideManualEntryModal() {
+  manualEntrySubmitting = false;
+  manualEntryDetails = null;
+  manualEntryDraftId = null;
+  ui.manualEntryModal.classList.add('hidden');
+  ui.manualEntryModal.setAttribute('aria-hidden', 'true');
+}
+
+async function handleManualEntrySave(event) {
+  event.preventDefault();
+
+  if (manualEntrySubmitting || !state.currentUser) {
+    return;
+  }
+
+  // Enter inside a date/time field submits the form; only the review step's
+  // Simpan Aktivitas button may actually save.
+  if (manualEntryStep !== 'review') {
+    return;
+  }
+
+  if (!validateManualEntryTimes()) {
+    setManualEntryStep('time');
+    return;
+  }
+
+  const details = manualEntryDetails;
+
+  if (!details) {
+    setManualEntryStep('details');
+    return;
+  }
+
+  const times = getManualEntryTimes();
+  const durationMinutes = getManualEntryDurationMinutes(times);
+  const draftId = manualEntryDraftId;
+  const payload = {
+    inventoryCode: details.inventoryCode,
+    userName: details.userName,
+    location: details.location,
+    workCode: details.workCode,
+    remarks: details.remarks,
+    startedAt: Timestamp.fromDate(times.startDate),
+    source: 'manual_entry'
+  };
+
+  manualEntrySubmitting = true;
+  ui.manualEntrySaveBtn.disabled = true;
+  ui.manualEntrySaveBtn.textContent = 'Menyimpan...';
+
+  try {
+    if (times.isOngoing) {
+      manualEntryFinalizingIds.add(draftId);
+      const created = await createActivity(payload, draftId);
+      manualEntryFinalizingIds.delete(draftId);
+
+      // A normal active activity from here on: same card, same workflow as one
+      // that was started live.
+      state.activities = [created, ...state.activities.filter((item) => item.id !== created.id)];
+      recomputeActiveActivities();
+      renderActiveActivities();
+      hideManualEntryModal();
+      focusNewActivityCard(created.id);
+      showToast('Aktivitas berhasil dicatat.', 'success');
+    } else {
+      // Rules only allow creating an 'ongoing' document, so the manual entry is
+      // created first and completed with a second write.
+      manualEntryFinalizingIds.add(draftId);
+      await createActivity(payload, draftId);
+      await updateActivity(draftId, {
+        endedAt: Timestamp.fromDate(times.endDate),
+        durationMinutes,
+        status: 'completed'
+      });
+      manualEntryFinalizingIds.delete(draftId);
+      hideManualEntryModal();
+      showToast('Aktivitas tersimpan di Riwayat.', 'success');
+    }
+  } catch (error) {
+    console.error('[Activity] Manual entry save failed:', error);
+    // Drop the guard so a document left half-written surfaces as a normal
+    // active card instead of silently disappearing.
+    manualEntryFinalizingIds.delete(draftId);
+    recomputeActiveActivities();
+    renderActiveActivities();
+    showToast('Gagal menyimpan aktivitas. Silakan coba lagi.', 'error');
+  } finally {
+    manualEntrySubmitting = false;
+    ui.manualEntrySaveBtn.disabled = false;
+    ui.manualEntrySaveBtn.textContent = 'Simpan Aktivitas';
+  }
+}
+
 async function handleStartActivity() {
   if (!state.currentUser) {
     showToast('Silakan login terlebih dahulu', 'error');
@@ -2616,6 +3105,7 @@ function handleAuthStateChange(user) {
     state.activities = [];
     state.activeActivities = [];
     dirtyActivityCards.clear();
+    manualEntryFinalizingIds.clear();
     stopTimerLoop();
     ui.activeActivitiesList.replaceChildren();
     renderHistory();
@@ -2678,12 +3168,85 @@ function bindEvents() {
   ui.editNameBtn.addEventListener('click', showEditNameModal);
   ui.editNameForm.addEventListener('submit', handleEditNameSubmit);
   ui.editNameCancelBtn.addEventListener('click', hideEditNameModal);
-  ui.startActivityBtn.addEventListener('click', handleStartActivity);
-  ui.addActivityFab.addEventListener('click', handleStartActivity);
+  // Both + buttons open the chooser. "Mulai Sekarang" then runs the unchanged
+  // handleStartActivity flow; the manual option is a separate wizard.
+  ui.startActivityBtn.addEventListener('click', openActivityChoiceModal);
+  ui.addActivityFab.addEventListener('click', openActivityChoiceModal);
   ui.confirmEndBtn.addEventListener('click', handleEndActivity);
   ui.confirmCancelBtn.addEventListener('click', hideConfirmModal);
   ui.cancelConfirmBtn.addEventListener('click', handleCancelActivity);
   ui.cancelDismissBtn.addEventListener('click', hideCancelConfirmation);
+
+  ui.activityChoiceCancel.addEventListener('click', hideActivityChoiceModal);
+  ui.activityChoiceModal.addEventListener('click', (event) => {
+    if (event.target === ui.activityChoiceModal) {
+      hideActivityChoiceModal();
+    }
+  });
+  ui.choiceStartNowBtn.addEventListener('click', () => {
+    hideActivityChoiceModal();
+    handleStartActivity();
+  });
+  ui.choiceManualEntryBtn.addEventListener('click', () => {
+    hideActivityChoiceModal();
+    openManualEntryModal();
+  });
+
+  ui.manualEntryForm.addEventListener('submit', handleManualEntrySave);
+  ui.manualEntryCancelBtn.addEventListener('click', hideManualEntryModal);
+  ui.manualEntryModal.addEventListener('click', (event) => {
+    if (event.target === ui.manualEntryModal && !manualEntrySubmitting) {
+      hideManualEntryModal();
+    }
+  });
+
+  [ui.manualEntryDate, ui.manualEntryStartTime, ui.manualEntryEndTime].forEach((element) => {
+    element.addEventListener('input', () => {
+      element.classList.remove('field-invalid');
+      updateManualEntryDurationPreview();
+    });
+  });
+  ui.manualEntryOngoing.addEventListener('change', handleManualEntryOngoingToggle);
+  ui.manualEntryTimeNextBtn.addEventListener('click', () => {
+    if (validateManualEntryTimes()) {
+      setManualEntryStep('details');
+    }
+  });
+  ui.manualEntryDetailsBackBtn.addEventListener('click', () => setManualEntryStep('time'));
+  ui.manualEntryDetailsNextBtn.addEventListener('click', () => {
+    if (!validateManualEntryDetails()) {
+      return;
+    }
+
+    try {
+      manualEntryDetails = readManualEntryDetails();
+    } catch (error) {
+      showToast(error.message, 'error');
+      return;
+    }
+
+    renderManualEntryReview(manualEntryDetails);
+    setManualEntryStep('review');
+  });
+  ui.manualEntryReviewBackBtn.addEventListener('click', () => setManualEntryStep('details'));
+  ui.manualEntryLocation.addEventListener('change', updateManualEntryCustomLocationVisibility);
+  ui.manualEntryCustomLocation.addEventListener('input', () => {
+    ui.manualEntryCustomLocation.classList.remove('field-invalid');
+  });
+  ui.manualEntryInventory.addEventListener('input', (event) => {
+    event.target.value = toUppercaseInventory(event.target.value);
+    event.target.classList.remove('field-invalid');
+  });
+  ui.manualEntryUserName.addEventListener('input', (event) => {
+    event.target.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
+  });
+  ui.manualEntryUserName.addEventListener('blur', () => {
+    ui.manualEntryUserName.value = toTitleCase(ui.manualEntryUserName.value || '');
+  });
+  ui.manualEntryRemarks.addEventListener('input', () => {
+    ui.manualEntryRemarks.classList.remove('field-invalid');
+  });
 
   ui.searchInput.addEventListener('input', renderHistory);
   ui.filterLocation.addEventListener('change', renderHistory);

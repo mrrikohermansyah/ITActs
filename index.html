@@ -329,6 +329,169 @@
       </div>
     </div>
 
+    <div id="activity-choice-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card activity-choice-card">
+        <h3>Tambah Aktivitas</h3>
+        <p class="activity-choice-subtitle">Pilih cara mencatat aktivitas service.</p>
+
+        <div class="activity-choice-options">
+          <button id="choice-start-now-btn" class="activity-choice-btn" type="button">
+            <span class="activity-choice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M9 6.5l9 5.5-9 5.5z" />
+              </svg>
+            </span>
+            <span class="activity-choice-text">
+              <strong>Mulai Sekarang</strong>
+              <small>Mulai mencatat service</small>
+            </span>
+          </button>
+
+          <button id="choice-manual-entry-btn" class="activity-choice-btn" type="button">
+            <span class="activity-choice-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <circle cx="12" cy="12" r="8.5" />
+                <path d="M12 7.5V12l3 2" />
+              </svg>
+            </span>
+            <span class="activity-choice-text">
+              <strong>Catat Aktivitas Sebelumnya</strong>
+              <small>Service sudah dilakukan</small>
+            </span>
+          </button>
+        </div>
+
+        <div class="modal-actions">
+          <button id="activity-choice-cancel" class="secondary-btn" type="button">Batal</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="manual-entry-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card manual-entry-card">
+        <h3>Catat Aktivitas Sebelumnya</h3>
+        <p id="manual-entry-step-label" class="manual-entry-step-label">Langkah 1 dari 3 &middot; Waktu Service</p>
+
+        <form id="manual-entry-form" class="activity-form" novalidate>
+          <div class="manual-entry-step" data-step="time">
+            <label>
+              <span>Tanggal</span>
+              <input id="manual-entry-date" type="date" />
+            </label>
+
+            <div class="manual-time-grid">
+              <label>
+                <span>Mulai</span>
+                <input id="manual-entry-start-time" type="time" />
+              </label>
+
+              <label>
+                <span>Selesai</span>
+                <input id="manual-entry-end-time" type="time" />
+              </label>
+            </div>
+
+            <label class="manual-ongoing-toggle">
+              <input id="manual-entry-ongoing" type="checkbox" />
+              <span>Aktivitas masih berlangsung</span>
+            </label>
+
+            <div class="manual-duration-preview">
+              <span>Durasi</span>
+              <strong id="manual-entry-duration-preview">-</strong>
+            </div>
+
+            <div class="modal-actions">
+              <button id="manual-entry-cancel" class="secondary-btn" type="button">Batal</button>
+              <button id="manual-entry-time-next" class="primary-btn" type="button">Lanjut</button>
+            </div>
+          </div>
+
+          <div class="manual-entry-step hidden" data-step="details">
+            <label>
+              <span>Nama User</span>
+              <input id="manual-entry-user-name" type="text" maxlength="80" placeholder="Nama user" />
+            </label>
+
+            <label>
+              <span>Lokasi</span>
+              <select id="manual-entry-location"></select>
+            </label>
+
+            <div id="manual-entry-custom-location-wrap" class="custom-location-wrap hidden">
+              <label>
+                <span>Lokasi Lain</span>
+                <input id="manual-entry-custom-location" type="text" maxlength="80" placeholder="Isi lokasi manual" />
+              </label>
+            </div>
+
+            <label>
+              <span>Kode Inventaris PC/Laptop</span>
+              <input id="manual-entry-inventory" type="text" maxlength="50" placeholder="Contoh: PC24059MEB" />
+            </label>
+
+            <div>
+              <span class="work-code-label">Kode Pengerjaan</span>
+              <div id="manual-entry-work-code-options" class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
+              <input id="manual-entry-work-code" type="hidden" value="" />
+            </div>
+
+            <label>
+              <span>Keterangan / Remarks</span>
+              <textarea id="manual-entry-remarks" rows="2" maxlength="2000" placeholder="Masukkan keterangan atau catatan tambahan..."></textarea>
+            </label>
+
+            <div class="modal-actions">
+              <button id="manual-entry-details-back" class="secondary-btn" type="button">Kembali</button>
+              <button id="manual-entry-details-next" class="primary-btn" type="button">Lanjut</button>
+            </div>
+          </div>
+
+          <div class="manual-entry-step hidden" data-step="review">
+            <div class="manual-review-list">
+              <div class="manual-review-row">
+                <span>Tanggal</span>
+                <strong id="manual-review-date">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Waktu</span>
+                <strong id="manual-review-time">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Durasi</span>
+                <strong id="manual-review-duration">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Nama User</span>
+                <strong id="manual-review-user">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Lokasi</span>
+                <strong id="manual-review-location">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Inventaris</span>
+                <strong id="manual-review-inventory">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Kode Pengerjaan</span>
+                <strong id="manual-review-work-code">-</strong>
+              </div>
+              <div class="manual-review-row">
+                <span>Keterangan</span>
+                <strong id="manual-review-remarks">-</strong>
+              </div>
+            </div>
+
+            <div class="modal-actions">
+              <button id="manual-entry-review-back" class="secondary-btn" type="button">Kembali</button>
+              <button id="manual-entry-save" class="primary-btn" type="submit">Simpan Aktivitas</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="toast" class="toast hidden" aria-live="assertive"></div>
 
     <template id="active-activity-template">

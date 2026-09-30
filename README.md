@@ -93,7 +93,8 @@ service cloud.firestore {
     function validActivity(data) {
       return data.keys().hasOnly([
           'userId', 'inventoryCode', 'userName', 'location', 'workCode',
-          'remarks', 'startedAt', 'endedAt', 'durationMinutes', 'status'
+          'remarks', 'startedAt', 'endedAt', 'durationMinutes', 'status',
+          'source'
         ])
         && data.userId is string
         && data.userId == request.auth.uid
@@ -106,7 +107,9 @@ service cloud.firestore {
         && (data.endedAt == null || data.endedAt is timestamp)
         && (data.durationMinutes == null
           || (data.durationMinutes is int && data.durationMinutes >= 0))
-        && data.status in ['ongoing', 'completed', 'cancelled'];
+        && data.status in ['ongoing', 'completed', 'cancelled']
+        && (!data.keys().hasAny(['source'])
+          || data.source in ['live_activity', 'manual_entry']);
     }
 
     match /activities/{activityId} {

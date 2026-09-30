@@ -1537,6 +1537,192 @@ body.nav-hidden .add-activity-fab {
   margin-top: 20px;
 }
 
+/* Choice modal: Mulai Sekarang / Catat Aktivitas Sebelumnya */
+
+.activity-choice-card {
+  width: min(400px, 100%);
+}
+
+.activity-choice-subtitle {
+  color: var(--text-soft);
+  margin-bottom: 16px;
+}
+
+.activity-choice-options {
+  display: grid;
+  gap: 10px;
+}
+
+.activity-choice-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fbff;
+  text-align: left;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.activity-choice-btn:hover {
+  border-color: rgba(37, 99, 235, 0.4);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+}
+
+.activity-choice-btn:active {
+  transform: scale(0.98);
+}
+
+.activity-choice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.activity-choice-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.activity-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.activity-choice-text strong {
+  font-size: 0.95rem;
+}
+
+.activity-choice-text small {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+/* Manual entry wizard: Catat Aktivitas Sebelumnya */
+
+.manual-entry-step-label {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.manual-entry-card input:disabled {
+  background: #f1f5f9;
+  color: var(--text-soft);
+}
+
+.manual-entry-step {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.manual-entry-step .modal-actions {
+  margin-top: 4px;
+}
+
+.manual-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.manual-ongoing-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+/* Overrides the global `label span` block display and full-width inputs so the
+   checkbox row stays on one line. */
+.manual-ongoing-toggle span {
+  display: inline;
+  margin-bottom: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.manual-ongoing-toggle input[type="checkbox"] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.manual-duration-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.manual-duration-preview strong {
+  color: var(--primary);
+  font-size: 0.95rem;
+}
+
+.manual-review-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f8fbff;
+}
+
+.manual-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+}
+
+.manual-review-row + .manual-review-row {
+  border-top: 1px solid var(--border);
+}
+
+.manual-review-row span {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.manual-review-row strong {
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .toast {
   position: fixed;
   left: 50%;
