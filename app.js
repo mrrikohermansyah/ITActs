@@ -1609,6 +1609,20 @@ function getExportCodeValue(item) {
   return '';
 }
 
+const LOCATION_ACRONYMS = ['AIS', 'HSE', 'HRD', 'IT', 'PCC'];
+const LOCATION_ACRONYM_PATTERN = new RegExp(
+  `\\b(?:${LOCATION_ACRONYMS.map((word) => word[0] + word.slice(1).toLowerCase()).join('|')})\\b`
+);
+
+function toProperCase(text) {
+  if (!text) return '';
+
+  return String(text)
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(LOCATION_ACRONYM_PATTERN, (word) => word.toUpperCase());
+}
+
 function getExportRows() {
   return getFilteredHistoryData().map((item) => {
     const startDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
@@ -1627,7 +1641,7 @@ function getExportRows() {
       exportDate,
       item.inventoryCode || '',
       getExportCodeValue(item),
-      'Bintan / ' + (item.location || ''),
+      'Bintan / ' + toProperCase(item.location),
       remarks,
       item.userName || '',
       durationValue,
