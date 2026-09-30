@@ -54,7 +54,7 @@
             <p class="eyebrow">Aplikasi kerja</p>
             <h1 id="page-title">Dashboard</h1>
           </div>
-          <div class="user-pill" id="topbar-user">Belum masuk</div>
+          <div class="user-pill" id="topbar-user">Belum Login</div>
         </header>
 
         <section id="loading-view" class="view-panel active" aria-label="Memuat aplikasi">
@@ -75,7 +75,7 @@
             </div>
 
             <div class="auth-tabs" role="tablist" aria-label="Mode autentikasi">
-              <button class="tab-btn active" type="button" data-auth-tab="login">Masuk</button>
+              <button class="tab-btn active" type="button" data-auth-tab="login">Login</button>
               <button class="tab-btn" type="button" data-auth-tab="register">Daftar</button>
             </div>
 
@@ -135,6 +135,11 @@
           </div>
 
           <div id="active-activities-list" class="active-activities-list" aria-live="polite"></div>
+
+          <button id="add-activity-fab" class="add-activity-fab" type="button" aria-label="Tambah Aktivitas">
+            <span class="add-activity-fab-icon" aria-hidden="true">+</span>
+            <span>Aktivitas</span>
+          </button>
         </section>
 
         <section id="history-view" class="view-panel hidden" aria-label="Riwayat aktivitas">
@@ -289,7 +294,7 @@
     <div id="cancel-confirm-modal" class="modal hidden" aria-hidden="true">
       <div class="modal-card">
         <h3>Batalkan Aktivitas?</h3>
-        <p>Batalkan aktivitas ini? Aktivitas yang dibatalkan tidak akan masuk ke riwayat.</p>
+        <p>Batalkan aktivitas ini? Aktivitas yang dibatalkan tidak akan masuk ke riwayat. Dan tidak dapat di undo.</p>
         <div class="modal-actions">
           <button id="cancel-activity-dismiss" class="secondary-btn" type="button">Batal</button>
           <button id="cancel-activity-confirm" class="danger-btn" type="button">Ya, Batalkan</button>
@@ -357,11 +362,18 @@
 
           <label>
             <span>Keterangan / Remarks</span>
-            <textarea class="activity-remarks" rows="4" maxlength="2000" placeholder="Opsional..."></textarea>
+            <textarea class="activity-remarks" rows="2" maxlength="2000" placeholder="Masukkan keterangan atau catatan tambahan..."></textarea>
           </label>
 
           <div class="form-actions">
-            <button class="primary-btn save-activity-btn" type="submit">Simpan Detail</button>
+            <button class="primary-btn save-activity-btn" type="submit">
+              <svg class="save-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span class="save-activity-btn-text">Simpan Detail</span>
+            </button>
             <button class="danger-btn end-activity-btn" type="button">Akhiri Service</button>
           </div>
         </form>
@@ -377,7 +389,7 @@
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
-          <span class="cancel-activity-label">Cancel Aktivitas</span>
+          <!-- <span class="cancel-activity-label">Cancel</span> -->
         </div>
       </div>
     </template>

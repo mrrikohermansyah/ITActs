@@ -23,6 +23,7 @@ const ui = {
   topbarUser: document.querySelector('#topbar-user'),
   bottomNav: document.querySelector('.bottom-nav'),
   startActivityBtn: document.querySelector('#start-activity-btn'),
+  addActivityFab: document.querySelector('#add-activity-fab'),
   quickActions: document.querySelector('.quick-actions'),
   activeActivitiesList: document.querySelector('#active-activities-list'),
   activeActivityTemplate: document.querySelector('#active-activity-template'),
@@ -181,6 +182,7 @@ function setBottomNavHidden(isHidden) {
   }
   bottomNavHidden = isHidden;
   ui.bottomNav.classList.toggle('nav-hidden', isHidden);
+  document.body.classList.toggle('nav-hidden', isHidden);
 }
 
 function updateBottomNavOnScroll() {
@@ -421,6 +423,28 @@ function getCard(activityId) {
   ).find((card) => card.dataset.activityId === activityId) || null;
 }
 
+// Called right after a new activity card is rendered: add a subtle "new"
+// highlight, then smooth-scroll just enough so the top of the fresh card
+// lands ~20px below the top of the viewport (the topbar is not fixed, so no
+// extra header offset is needed).
+function focusNewActivityCard(activityId) {
+  const card = getCard(activityId);
+  if (!card) {
+    return;
+  }
+
+  card.classList.remove('activity-new');
+  void card.offsetWidth;
+  card.classList.add('activity-new');
+  card.addEventListener('animationend', () => card.classList.remove('activity-new'), { once: true });
+
+  requestAnimationFrame(() => {
+    const topOffset = 20;
+    const targetY = card.getBoundingClientRect().top + window.scrollY - topOffset;
+    window.scrollTo({ top: Math.max(targetY, 0), behavior: 'smooth' });
+  });
+}
+
 // Mark a card as having unsaved local edits and reset its save-button label back
 // to "Simpan Detail" so the button always reflects the card's real saved state.
 function markCardDirty(activityId) {
@@ -432,8 +456,9 @@ function markCardDirty(activityId) {
 
   const card = getCard(activityId);
   const saveBtn = card?.querySelector('.save-activity-btn');
-  if (saveBtn && saveBtn.textContent !== 'Simpan Detail') {
-    saveBtn.textContent = 'Simpan Detail';
+  const saveBtnText = saveBtn?.querySelector('.save-activity-btn-text');
+  if (saveBtnText && saveBtnText.textContent !== 'Simpan Detail') {
+    saveBtnText.textContent = 'Simpan Detail';
   }
 }
 
@@ -583,6 +608,7 @@ function getCardFormPayload(card) {
 }
 
 function validateCardEndFields(card) {
+  const inventoryInput = card.querySelector('.inventory-code');
   const userNameInput = card.querySelector('.user-name');
   const customInput = card.querySelector('.custom-location-input');
   const remarksInput = card.querySelector('.activity-remarks');
@@ -590,13 +616,18 @@ function validateCardEndFields(card) {
   const locationSelect = card.querySelector('.activity-location');
   const workHidden = card.querySelector('.activity-work-code');
 
-  [userNameInput, locationSelect, customInput, remarksInput, workOptions].forEach((element) => {
+  [inventoryInput, userNameInput, locationSelect, customInput, remarksInput, workOptions].forEach((element) => {
     element.classList.remove('field-invalid');
   });
 
   // Ordered top-to-bottom like the form layout so when several fields are
   // empty only the topmost one gets highlighted first.
   const requiredFields = [
+    {
+      element: inventoryInput,
+      focusTarget: inventoryInput,
+      isEmpty: !(inventoryInput.value || '').trim()
+    },
     {
       element: userNameInput,
       focusTarget: userNameInput,
@@ -735,6 +766,7 @@ function renderActiveActivities() {
   ui.startActivityBtn.setAttribute('tabindex', '0');
 
   ui.emptyActiveState.classList.toggle('hidden', hasOngoing);
+  ui.addActivityFab.classList.toggle('visible', hasOngoing);
 
   const currentCards = Array.from(
     ui.activeActivitiesList.querySelectorAll('.active-activity-card')
@@ -2087,6 +2119,7 @@ async function handleStartActivity() {
   }
 
   ui.startActivityBtn.disabled = true;
+  ui.addActivityFab.disabled = true;
 
   try {
     console.debug('[Activity] Preparing data...');
@@ -2113,6 +2146,7 @@ async function handleStartActivity() {
     state.activities = [newActivity, ...state.activities.filter((item) => item.id !== newActivity.id)];
     recomputeActiveActivities();
     renderActiveActivities();
+    focusNewActivityCard(newActivity.id);
 
     showToast('Aktivitas dimulai', 'success');
   } catch (error) {
@@ -2120,6 +2154,7 @@ async function handleStartActivity() {
     showToast('Gagal memulai aktivitas', 'error');
   } finally {
     ui.startActivityBtn.disabled = false;
+    ui.addActivityFab.disabled = false;
   }
 }
 
@@ -2159,16 +2194,18 @@ async function handleSaveActivity(event, activityId) {
     // On failure the catch below leaves the label as "Simpan Detail".
     clearCardDirty(activityId);
     const saveBtn = card.querySelector('.save-activity-btn');
-    if (saveBtn) {
-      saveBtn.textContent = 'Detail tersimpan';
+    const saveBtnText = saveBtn?.querySelector('.save-activity-btn-text');
+    if (saveBtnText) {
+      saveBtnText.textContent = 'Detail tersimpan';
     }
 
     showToast('Detail service berhasil disimpan.', 'success');
   } catch (error) {
     console.error('[Activity] Save failed:', error);
     const saveBtn = card.querySelector('.save-activity-btn');
-    if (saveBtn) {
-      saveBtn.textContent = 'Simpan Detail';
+    const saveBtnText = saveBtn?.querySelector('.save-activity-btn-text');
+    if (saveBtnText) {
+      saveBtnText.textContent = 'Simpan Detail';
     }
     const knownMessages = [
       'Pilih lokasi terlebih dahulu.',
@@ -2489,6 +2526,7 @@ function bindEvents() {
   ui.editNameForm.addEventListener('submit', handleEditNameSubmit);
   ui.editNameCancelBtn.addEventListener('click', hideEditNameModal);
   ui.startActivityBtn.addEventListener('click', handleStartActivity);
+  ui.addActivityFab.addEventListener('click', handleStartActivity);
   ui.confirmEndBtn.addEventListener('click', handleEndActivity);
   ui.confirmCancelBtn.addEventListener('click', hideConfirmModal);
   ui.cancelConfirmBtn.addEventListener('click', handleCancelActivity);

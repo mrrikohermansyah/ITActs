@@ -37,14 +37,14 @@ export async function createActivity(activityPayload) {
     status: 'ongoing'
   };
 
-  console.debug('[Firestore] createActivity -> write requested', {
-    userId: currentUser.uid,
-    status: payload.status
-  });
+  // console.debug('[Firestore] createActivity -> write requested', {
+  //   userId: currentUser.uid,
+  //   status: payload.status
+  // });
 
   try {
     const ref = await addDoc(activitiesRef, payload);
-    console.log('[Activity] Firestore save successful', { id: ref.id });
+    // console.log('[Activity] Firestore save successful', { id: ref.id });
     console.debug('[Firestore] createActivity -> success', { id: ref.id, status: payload.status });
     return { id: ref.id, ...payload };
   } catch (error) {

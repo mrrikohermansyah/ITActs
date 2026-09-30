@@ -468,6 +468,65 @@ textarea {
   display: none;
 }
 
+/* Floating "+ Tambah Aktivitas": fixed above the bottom nav so a new activity
+   can be started from any scroll position. Hidden by default (no active
+   activities, and desktop keeps the in-flow top button). */
+.add-activity-fab {
+  display: none;
+  position: fixed;
+  right: 16px;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  z-index: 40;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.3);
+  transition: bottom 280ms cubic-bezier(0.22, 0.61, 0.36, 1), transform 180ms ease;
+}
+
+.add-activity-fab-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.add-activity-fab:active {
+  transform: scale(0.94);
+}
+
+.add-activity-fab:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 4px;
+}
+
+.add-activity-fab:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* Follow the bottom nav's hide/show so the button never overlaps it and no
+   blank strip is left when the bar tucks away. */
+body.nav-hidden .add-activity-fab {
+  bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 900px) {
+  /* While activities are running, the floating button is the only "+" on
+     screen: hide the in-flow top one to avoid two add buttons. */
+  .quick-actions.is-active .start-activity-fab,
+  .quick-actions.is-active .start-activity-label {
+    display: none;
+  }
+
+  .add-activity-fab.visible {
+    display: inline-flex;
+  }
+}
+
 .empty-state {
   background: var(--panel);
   border: 1px dashed var(--border);
@@ -496,6 +555,160 @@ textarea {
   max-width: 100%;
   min-width: 0;
   padding: 20px;
+}
+
+/* Subtle feedback for a freshly created activity card (class removed on
+   animationend so it never replays on unrelated renders). */
+@keyframes activityCardFocus {
+  0% {
+    opacity: 0.4;
+    transform: translateY(10px) scale(0.98);
+  }
+  60% {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    box-shadow: var(--shadow);
+  }
+}
+
+.active-activity-card.activity-new {
+  animation: activityCardFocus 500ms ease;
+}
+
+/* Mobile: compact the activity card vertically so a whole activity fits in
+   roughly one viewport. Spacing/padding are reduced before font sizes; all
+   touch targets stay >= ~40px. */
+@media (max-width: 900px) {
+  .active-activity-card {
+    padding: 14px;
+  }
+
+  .active-activity-card .status-row {
+    margin-bottom: 10px;
+  }
+
+  .active-activity-card .status-badge {
+    padding: 5px 10px;
+  }
+
+  .active-activity-card .activity-form {
+    gap: 10px;
+  }
+
+  .active-activity-card .field-grid {
+    gap: 10px;
+  }
+
+  .active-activity-card label span,
+  .active-activity-card .work-code-label {
+    margin-bottom: 4px;
+  }
+
+  .active-activity-card input,
+  .active-activity-card select,
+  .active-activity-card textarea {
+    padding: 9px 12px;
+    min-height: 40px;
+    border-radius: 10px;
+  }
+
+  .active-activity-card .activity-remarks {
+    min-height: 0;
+    resize: vertical;
+  }
+
+  .active-activity-card .work-code-options {
+    gap: 6px;
+  }
+
+  .active-activity-card .work-code-option {
+    padding: 6px 10px;
+    min-height: 36px;
+  }
+
+  .active-activity-card .primary-btn,
+  .active-activity-card .secondary-btn,
+  .active-activity-card .danger-btn {
+    padding: 10px 14px;
+  }
+
+  /* Simpan Detail (left) + Akhiri Service (right) share one row. Higher
+     specificity than the generic stacked .form-actions rules below. */
+  .active-activity-card .activity-form .form-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: stretch;
+    gap: 8px;
+  }
+
+  .active-activity-card .form-actions > .primary-btn,
+  .active-activity-card .form-actions > .danger-btn {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .active-activity-card .save-activity-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    white-space: nowrap;
+  }
+
+  .active-activity-card .form-actions .primary-btn,
+  .active-activity-card .form-actions .danger-btn {
+    font-size: 0.92rem;
+  }
+
+  .save-icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Very narrow phones: keep both buttons side by side, just tighter. */
+  @media (max-width: 400px) {
+    .active-activity-card .primary-btn,
+    .active-activity-card .secondary-btn,
+    .active-activity-card .danger-btn {
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .active-activity-card .activity-form .form-actions {
+      gap: 6px;
+    }
+
+    .active-activity-card .form-actions .primary-btn,
+    .active-activity-card .form-actions .danger-btn {
+      font-size: 0.85rem;
+    }
+  }
+
+  .active-activity-card .activity-form .form-actions {
+    gap: 10px;
+  }
+
+  /* Cancel button joins its label on one row instead of stacking. */
+  .active-activity-card .cancel-activity-control {
+    flex-direction: row;
+    gap: 8px;
+    min-width: 0;
+    margin: 12px auto 2px;
+  }
+
+  .active-activity-card .cancel-activity-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
 }
 
 .status-row {
@@ -656,7 +869,7 @@ textarea {
 }
 
 .cancel-activity-label {
-  color: var(--text-soft);
+  color: var(--danger);
   font-size: 0.72rem;
   font-weight: 600;
   white-space: nowrap;
