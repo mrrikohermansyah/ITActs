@@ -1632,8 +1632,10 @@ body.nav-hidden .add-activity-fab {
   color: var(--text-soft);
 }
 
-/* Native date/time inputs: 16px font stops Safari iOS auto-zoom on focus;
-   48px min-height is a comfortable thumb target. */
+/* Native date/time inputs keep their native rendering — forcing
+   -webkit-appearance:none on iOS makes temporal inputs overflow their
+   container, so it must stay untouched. 16px font stops Safari iOS
+   auto-zoom on focus; 48px min-height is a comfortable thumb target. */
 .manual-entry-card input[type="date"],
 .manual-entry-card input[type="time"] {
   width: 100%;
@@ -1643,20 +1645,6 @@ body.nav-hidden .add-activity-fab {
   text-align: left;
   font-size: 1rem;
   min-height: 48px;
-  overflow: hidden;
-}
-
-/* iOS-only (-webkit-touch-callout is unimplemented elsewhere): WebKit lays out
-   temporal inputs as inline-flex with intrinsic min-content width and can grow
-   them past their container even with width:100%; resetting appearance is the
-   documented fix that lets the width constraints win. The native wheel picker
-   is untouched — tapping the field still opens it. */
-@supports (-webkit-touch-callout: none) {
-  .manual-entry-card input[type="date"],
-  .manual-entry-card input[type="time"] {
-    -webkit-appearance: none;
-    appearance: none;
-  }
 }
 
 /* Keep the focused field clear of the card edges when the browser scrolls it
@@ -1986,6 +1974,15 @@ body.nav-hidden .add-activity-fab {
   .manual-time-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+  }
+
+  /* iOS renders date/time inputs at an intrinsic width that overflows the
+     card when stretched; on phones let them keep their native compact size
+     inside the full-width label (max-width: 100% from the base rule clamps
+     the box, so overflow is impossible either way). */
+  .manual-entry-card input[type="date"],
+  .manual-entry-card input[type="time"] {
+    width: auto;
   }
 
   .manual-ongoing-toggle {
