@@ -420,8 +420,8 @@
 
             <div id="manual-entry-custom-location-wrap" class="custom-location-wrap hidden">
               <label>
-                <span>Lokasi Lain</span>
-                <input id="manual-entry-custom-location" type="text" maxlength="80" placeholder="Isi lokasi manual" />
+                <span>Lokasi Lainnya</span>
+                <input id="manual-entry-custom-location" type="text" maxlength="80" placeholder="Masukkan lokasi..." />
               </label>
             </div>
 
@@ -515,23 +515,25 @@
           </div>
 
           <div class="field-grid two-column">
-            <label>
-              <span>Lokasi</span>
-              <select class="activity-location"></select>
-            </label>
+            <div class="location-field">
+              <label>
+                <span>Lokasi</span>
+                <select class="activity-location"></select>
+              </label>
+
+              <div class="custom-location-wrap hidden">
+                <label>
+                  <span>Lokasi Lainnya</span>
+                  <input class="custom-location-input" type="text" maxlength="80" placeholder="Masukkan lokasi..." />
+                </label>
+              </div>
+            </div>
 
             <div>
               <span class="work-code-label">Kode Pengerjaan</span>
               <div class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
               <input class="activity-work-code" type="hidden" value="" />
             </div>
-          </div>
-
-          <div class="custom-location-wrap hidden">
-            <label>
-              <span>Lokasi Lain</span>
-              <input class="custom-location-input" type="text" maxlength="80" placeholder="Isi lokasi manual" />
-            </label>
           </div>
 
           <label>

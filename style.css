@@ -794,6 +794,15 @@ body.nav-hidden .add-activity-fab {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Keeps the "Lokasi Lainnya" input in the Lokasi column, directly under the
+   dropdown; the hidden wrap contributes no gap. */
+.location-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
 .work-code-label {
   display: block;
   margin-bottom: 8px;

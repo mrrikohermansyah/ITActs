@@ -38,7 +38,7 @@ Act/
 
 - Versi awal ini hanya satu role user per akun, sesuai kebutuhan single-user / single-role.
 - Durasi aktivitas ditampilkan dalam menit saja, sesuai permintaan.
-- Penyimpanan lokasi dibuat dari array JavaScript di `config.js`, dengan opsi `OTHER LOCATION` untuk menambahkan manual jika diperlukan.
+- Penyimpanan lokasi dibuat dari array JavaScript di `config.js`, dengan opsi `Other Location` untuk menambahkan manual jika diperlukan.
 - `apiKey` Firebase untuk web bersifat publik; keamanan aplikasi ditangani oleh Firebase Auth dan Firestore Security Rules.
 - Use-case ini fokus pada kebutuhan pencatatan aktivitas harian IT Support; belum ada fitur multi-tenant atau admin dashboard.
 

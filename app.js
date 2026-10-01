@@ -1,4 +1,4 @@
-import { WORK_CODES, LOCATION_OPTIONS } from './config.js';
+import { WORK_CODES, LOCATION_OPTIONS, OTHER_LOCATION } from './config.js';
 import { auth, loginUser, logoutUser, registerUser, resetPassword, subscribeToAuth, updateCurrentUserDisplayName } from './auth.js';
 import { cancelActivity, createActivity, deleteActivity, finishActivity, generateActivityId, subscribeToActivities, updateActivity } from './firestore.js';
 import { Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -575,7 +575,7 @@ function syncCardFromActivity(card, activity) {
     customInput.value = '';
     customWrap.classList.add('hidden');
   } else {
-    locationSelect.value = 'OTHER LOCATION';
+    locationSelect.value = OTHER_LOCATION;
     customInput.value = location;
     customWrap.classList.remove('hidden');
   }
@@ -600,7 +600,7 @@ function updateCardCustomLocationVisibility(card) {
   locationSelect.classList.remove('field-invalid');
   customInput.classList.remove('field-invalid');
 
-  if (locationSelect.value === 'OTHER LOCATION') {
+  if (locationSelect.value === OTHER_LOCATION) {
     customWrap.classList.remove('hidden');
     customInput.focus();
   } else {
@@ -622,14 +622,14 @@ function refreshAllLocationSelects() {
     // Keep the placeholder selected when no location has been picked yet.
     locationSelect.value = !current || LOCATION_OPTIONS.includes(current)
       ? current
-      : 'OTHER LOCATION';
+      : OTHER_LOCATION;
   });
 
   const manualCurrent = ui.manualEntryLocation.value;
   populateSelect(ui.manualEntryLocation, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
   ui.manualEntryLocation.value = !manualCurrent || LOCATION_OPTIONS.includes(manualCurrent)
     ? manualCurrent
-    : 'OTHER LOCATION';
+    : OTHER_LOCATION;
 }
 
 function getCardFormPayload(card) {
@@ -641,11 +641,16 @@ function getCardFormPayload(card) {
     throw new Error('Pilih lokasi terlebih dahulu.');
   }
 
-  if (locationValue === 'OTHER LOCATION') {
+  if (locationValue === OTHER_LOCATION) {
     const customValue = customInput.value.trim();
 
     if (!customValue) {
-      throw new Error('Isi lokasi manual jika memilih OTHER LOCATION');
+      // Only the custom input is wrong here — a location IS selected — so the
+      // dropdown must not get the invalid highlight.
+      customInput.classList.add('field-invalid');
+      customInput.focus({ preventScroll: true });
+      customInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      throw new Error('Isi lokasi manual jika memilih Other Location');
     }
 
     const exists = LOCATION_OPTIONS.some(
@@ -717,7 +722,7 @@ function validateCardEndFields(card) {
     {
       element: customInput,
       focusTarget: customInput,
-      isEmpty: locationSelect.value === 'OTHER LOCATION'
+      isEmpty: locationSelect.value === OTHER_LOCATION
         && !(customInput.value || '').trim()
     },
     {
@@ -793,7 +798,7 @@ function buildActiveActivityCard(activity) {
     customInput.value = '';
     customWrap.classList.add('hidden');
   } else {
-    locationSelect.value = 'OTHER LOCATION';
+    locationSelect.value = OTHER_LOCATION;
     customInput.value = location;
     customWrap.classList.remove('hidden');
   }
@@ -808,7 +813,10 @@ function buildActiveActivityCard(activity) {
   endBtn.addEventListener('click', () => showConfirmModal(activity.id));
   cancelBtn.addEventListener('click', () => showCancelConfirmation(activity.id));
   locationSelect.addEventListener('change', () => updateCardCustomLocationVisibility(card));
-  customInput.addEventListener('input', () => customInput.classList.remove('field-invalid'));
+  customInput.addEventListener('input', (event) => {
+    customInput.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
+  });
   inventoryInput.addEventListener('input', (event) => {
     event.target.value = toUppercaseInventory(event.target.value);
   });
@@ -2485,13 +2493,13 @@ function validateManualEntryDetails() {
     return false;
   }
 
-  if (ui.manualEntryLocation.value === 'OTHER LOCATION') {
+  if (ui.manualEntryLocation.value === OTHER_LOCATION) {
     const customValue = ui.manualEntryCustomLocation.value.trim();
 
     if (!customValue) {
       ui.manualEntryCustomLocation.classList.add('field-invalid');
       ui.manualEntryCustomLocation.focus({ preventScroll: true });
-      showToast('Isi lokasi manual jika memilih OTHER LOCATION', 'error');
+      showToast('Isi lokasi manual jika memilih Other Location', 'error');
       return false;
     }
 
@@ -2516,11 +2524,11 @@ function readManualEntryDetails() {
     throw new Error('Pilih lokasi terlebih dahulu.');
   }
 
-  if (locationValue === 'OTHER LOCATION') {
+  if (locationValue === OTHER_LOCATION) {
     const customValue = ui.manualEntryCustomLocation.value.trim();
 
     if (!customValue) {
-      throw new Error('Isi lokasi manual jika memilih OTHER LOCATION');
+      throw new Error('Isi lokasi manual jika memilih Other Location');
     }
 
     const exists = LOCATION_OPTIONS.some((item) => item.toLowerCase() === customValue.toLowerCase());
@@ -2552,7 +2560,7 @@ function readManualEntryDetails() {
 }
 
 function updateManualEntryCustomLocationVisibility() {
-  const isCustom = ui.manualEntryLocation.value === 'OTHER LOCATION';
+  const isCustom = ui.manualEntryLocation.value === OTHER_LOCATION;
 
   ui.manualEntryLocation.classList.remove('field-invalid');
   ui.manualEntryCustomLocation.classList.remove('field-invalid');
@@ -2847,7 +2855,7 @@ async function handleSaveActivity(event, activityId) {
     const knownMessages = [
       'Pilih lokasi terlebih dahulu.',
       'Pilih minimal satu kode pengerjaan.',
-      'Isi lokasi manual jika memilih OTHER LOCATION',
+      'Isi lokasi manual jika memilih Other Location',
       'Lokasi sudah ada di daftar lokasi'
     ];
     if (error && knownMessages.includes(error.message)) {
@@ -2916,7 +2924,7 @@ async function handleEndActivity() {
     const knownMessages = [
       'Pilih lokasi terlebih dahulu.',
       'Pilih minimal satu kode pengerjaan.',
-      'Isi lokasi manual jika memilih OTHER LOCATION',
+      'Isi lokasi manual jika memilih Other Location',
       'Lokasi sudah ada di daftar lokasi'
     ];
     if (error && knownMessages.includes(error.message)) {
@@ -3244,8 +3252,9 @@ function bindEvents() {
   });
   ui.manualEntryReviewBackBtn.addEventListener('click', () => setManualEntryStep('details'));
   ui.manualEntryLocation.addEventListener('change', updateManualEntryCustomLocationVisibility);
-  ui.manualEntryCustomLocation.addEventListener('input', () => {
+  ui.manualEntryCustomLocation.addEventListener('input', (event) => {
     ui.manualEntryCustomLocation.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
   });
   ui.manualEntryInventory.addEventListener('input', (event) => {
     event.target.value = toUppercaseInventory(event.target.value);

@@ -13,6 +13,10 @@ const firebaseConfig = {
 
 export const firebaseApp = initializeApp(firebaseConfig);
 
+// Sentinel opsi "Other Location": nilainya harus sama persis dengan value
+// <option> yang dihasilkan populateSelect, karena banyak logic membandingkannya.
+export const OTHER_LOCATION = 'Other Location';
+
 export const LOCATION_OPTIONS = [
   'Rest Area',
 'Security Pos 1',
@@ -55,7 +59,7 @@ export const LOCATION_OPTIONS = [
 'Store 3',
 'Store 4',
 'Store 5',
-'Other Location'
+  OTHER_LOCATION
 ];
 
 export const WORK_CODES = [
