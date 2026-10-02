@@ -1644,9 +1644,14 @@ body.nav-hidden .add-activity-fab {
 /* Native date/time inputs keep their native rendering — forcing
    -webkit-appearance:none on iOS makes temporal inputs overflow their
    container, so it must stay untouched. 16px font stops Safari iOS
-   auto-zoom on focus; 48px min-height is a comfortable thumb target. */
+   auto-zoom on focus; 48px min-height is a comfortable thumb target.
+   WebKit lays native temporal inputs out as inline-flex with an intrinsic
+   content width, so the box is display:block at every viewport width —
+   the quirk is not limited to phone widths (iPad, landscape, and
+   desktop-mode iOS viewports behave the same). */
 .manual-entry-card input[type="date"],
 .manual-entry-card input[type="time"] {
+  display: block;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -1687,10 +1692,16 @@ body.nav-hidden .add-activity-fab {
   margin-top: 4px;
 }
 
+/* Same shrink guard as .manual-entry-step > *, declared on the grid itself
+   so WebKit's intrinsic temporal-input width can never stretch its columns. */
 .manual-time-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .manual-ongoing-toggle {
@@ -1986,18 +1997,6 @@ body.nav-hidden .add-activity-fab {
   .manual-time-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
-  }
-
-  /* iOS UA lays temporal inputs out as inline-flex with intrinsic content
-     width — that is what made the fields unequal and able to outgrow the
-     card when stretched. Switching the box to display:block removes the
-     intrinsic behavior entirely, so width:100% resolves cleanly against the
-     wrapper and all three fields match the form width. Appearance is left
-     native: calendar/clock indicator and the wheel picker are untouched. */
-  .manual-entry-card input[type="date"],
-  .manual-entry-card input[type="time"] {
-    display: block;
-    width: 100%;
   }
 
   .manual-ongoing-toggle {
