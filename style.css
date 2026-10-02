@@ -1169,6 +1169,11 @@ body.nav-hidden .add-activity-fab {
 
 .history-filter-panel {
   display: grid;
+  /* Explicit minmax(0, 1fr) column: an implicit auto track can be floored by
+     the min-content width WebKit derives from native date inputs. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
   gap: 12px;
   margin-top: 12px;
   padding-top: 12px;
@@ -1207,9 +1212,13 @@ body.nav-hidden .add-activity-fab {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: end;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .filter-field {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -1219,7 +1228,15 @@ body.nav-hidden .add-activity-fab {
   font-size: 0.82rem;
 }
 
+/* Same WebKit guard as .manual-entry-card: native temporal inputs render as
+   inline-flex with an intrinsic content width, so the box is forced to block
+   and kept shrinkable within its column. Native picker stays untouched. */
 .filter-field input[type="date"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: 45px;
 }
 
@@ -1530,6 +1547,7 @@ body.nav-hidden .add-activity-fab {
 .modal-card {
   width: min(420px, 100%);
   max-width: calc(100vw - 32px);
+  min-width: 0;
   /* vh fallback for browsers without dvh; dvh tracks the dynamic mobile viewport
      (URL bar show/hide) so the card never extends past the visible screen. */
   max-height: calc(100vh - 32px);
