@@ -36,6 +36,9 @@ html, body {
 body {
   min-height: 100vh;
   overflow-x: hidden;
+  /* Disables iOS double-tap-to-zoom; panning and pinch are unaffected here
+     (pinch is blocked by the viewport meta / gesturestart guard). */
+  touch-action: manipulation;
 }
 
 button, input, select, textarea {
@@ -56,7 +59,9 @@ button {
   max-width: 1300px;
   min-height: calc(100vh - 72px);
   margin: 0 auto;
-  padding: 24px 18px calc(80px + env(safe-area-inset-bottom));
+  /* viewport-fit=cover makes the page extend under the iOS status bar in
+     standalone mode; the top inset is 0 in browser tabs and on Android. */
+  padding: calc(24px + env(safe-area-inset-top)) 18px calc(80px + env(safe-area-inset-bottom));
   gap: 18px;
 }
 
@@ -1827,7 +1832,7 @@ body.nav-hidden .add-activity-fab {
 
 @media (max-width: 900px) {
   #app-shell {
-    padding-top: 14px;
+    padding-top: calc(14px + env(safe-area-inset-top));
   }
 
   .sidebar {
