@@ -107,12 +107,28 @@ const ui = {
   manualReviewLocation: document.querySelector('#manual-review-location'),
   manualReviewInventory: document.querySelector('#manual-review-inventory'),
   manualReviewWorkCode: document.querySelector('#manual-review-work-code'),
-  manualReviewRemarks: document.querySelector('#manual-review-remarks')
+  manualReviewRemarks: document.querySelector('#manual-review-remarks'),
+  editActivityModal: document.querySelector('#edit-activity-modal'),
+  editActivityForm: document.querySelector('#edit-activity-form'),
+  editActivityDate: document.querySelector('#edit-activity-date'),
+  editActivityStartTime: document.querySelector('#edit-activity-start-time'),
+  editActivityEndTime: document.querySelector('#edit-activity-end-time'),
+  editActivityInventory: document.querySelector('#edit-activity-inventory'),
+  editActivityUserName: document.querySelector('#edit-activity-user-name'),
+  editActivityLocation: document.querySelector('#edit-activity-location'),
+  editActivityCustomLocationWrap: document.querySelector('#edit-activity-custom-location-wrap'),
+  editActivityCustomLocation: document.querySelector('#edit-activity-custom-location'),
+  editActivityWorkCodeOptions: document.querySelector('#edit-activity-work-code-options'),
+  editActivityWorkCode: document.querySelector('#edit-activity-work-code'),
+  editActivityRemarks: document.querySelector('#edit-activity-remarks'),
+  editActivityCancelBtn: document.querySelector('#edit-activity-cancel'),
+  editActivitySaveBtn: document.querySelector('#edit-activity-save')
 };
 
 let activeTimerLoop = null;
 let openSwipeActivityId = null;
 let pendingDeleteActivityId = null;
+let pendingEditActivityId = null;
 let pendingEndActivityId = null;
 let pendingCancelActivityId = null;
 // Activity ids whose card has unsaved local edits. Remote snapshots must not
@@ -1289,11 +1305,18 @@ function renderHistory() {
 
       return `
         <article class="swipe-item" data-activity-id="${escapeHtml(item.id)}">
-          <button class="swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}">
-            <svg class="trash-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-            </svg>
-          </button>
+          <div class="swipe-actions">
+            <button class="swipe-action swipe-edit-action" type="button" data-edit-activity-id="${escapeHtml(item.id)}" aria-label="Edit aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
+              <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+              </svg>
+            </button>
+            <button class="swipe-action swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
+              <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+              </svg>
+            </button>
+          </div>
           <div class="feed-card card swipe-content">
             <div class="feed-header">
               <div>
@@ -1321,12 +1344,14 @@ function renderHistory() {
   bindSwipeGestures();
 }
 
+// The reveal hides [Edit][Delete] behind the card: two 52px actions with a 10px
+// gap, 14px from the right edge, so the card must travel ~140px to uncover both.
 const SWIPE_THRESHOLD = 92;
-const SWIPE_MAX_OFFSET = 124;
+const SWIPE_MAX_OFFSET = 140;
 
 function setSwipePosition(item, position, isDragging = false) {
   const content = item.querySelector('.swipe-content');
-  const blob = item.querySelector('.swipe-delete-action');
+  const actions = item.querySelectorAll('.swipe-action');
   const boundedPosition = Math.max(-SWIPE_MAX_OFFSET, Math.min(0, position));
   const progress = Math.min(1, Math.abs(boundedPosition) / SWIPE_THRESHOLD);
   const blobWidth = 34 + progress * 22;
@@ -1337,13 +1362,15 @@ function setSwipePosition(item, position, isDragging = false) {
   const iconScale = 0.5 + iconProgress * 0.5;
 
   content.style.transform = `translateX(${boundedPosition}px)`;
-  blob.style.setProperty('--blob-width', `${blobWidth}px`);
-  blob.style.setProperty('--blob-height', `${blobHeight}px`);
-  blob.style.setProperty('--blob-radius', blobRadius);
-  blob.style.setProperty('--blob-scale', blobScale.toFixed(3));
-  blob.style.setProperty('--blob-progress', progress.toFixed(3));
-  blob.style.setProperty('--icon-opacity', iconProgress.toFixed(3));
-  blob.style.setProperty('--icon-scale', iconScale.toFixed(3));
+  actions.forEach((action) => {
+    action.style.setProperty('--blob-width', `${blobWidth}px`);
+    action.style.setProperty('--blob-height', `${blobHeight}px`);
+    action.style.setProperty('--blob-radius', blobRadius);
+    action.style.setProperty('--blob-scale', blobScale.toFixed(3));
+    action.style.setProperty('--blob-progress', progress.toFixed(3));
+    action.style.setProperty('--icon-opacity', iconProgress.toFixed(3));
+    action.style.setProperty('--icon-scale', iconScale.toFixed(3));
+  });
   item.classList.toggle('is-open', boundedPosition < 0);
   item.classList.toggle('is-ready', progress >= 1);
   item.classList.toggle('is-dragging', isDragging);
@@ -1498,9 +1525,242 @@ async function handleDeleteActivity() {
   }
 }
 
+function clearEditActivityInvalidFields() {
+  ui.editActivityStartTime.classList.remove('field-invalid');
+  ui.editActivityEndTime.classList.remove('field-invalid');
+  ui.editActivityInventory.classList.remove('field-invalid');
+  ui.editActivityUserName.classList.remove('field-invalid');
+  ui.editActivityLocation.classList.remove('field-invalid');
+  ui.editActivityCustomLocation.classList.remove('field-invalid');
+  ui.editActivityWorkCodeOptions.classList.remove('field-invalid');
+  ui.editActivityRemarks.classList.remove('field-invalid');
+}
+
+function toTimeInputValue(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function openEditActivityModal(activityId) {
+  const activity = state.activities.find((item) => item.id === activityId);
+
+  if (!activity) {
+    showToast('Aktivitas tidak ditemukan.', 'warning');
+    return;
+  }
+
+  pendingEditActivityId = activityId;
+  clearEditActivityInvalidFields();
+
+  populateSelect(ui.editActivityLocation, LOCATION_OPTIONS, LOCATION_PLACEHOLDER_OPTION);
+
+  // Tanggal is display-only: Jam Start/End reuse the original local calendar
+  // day, so an evening activity in WIB is never shifted to the previous day.
+  const startedAtDate = toJsDate(activity.startedAt);
+  const endedAtDate = toJsDate(activity.endedAt);
+  ui.editActivityDate.value = startedAtDate
+    ? new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(startedAtDate)
+    : '';
+  ui.editActivityStartTime.value = startedAtDate ? toTimeInputValue(startedAtDate) : '';
+  ui.editActivityEndTime.value = endedAtDate ? toTimeInputValue(endedAtDate) : '';
+
+  ui.editActivityInventory.value = toUppercaseInventory(activity.inventoryCode || '');
+  ui.editActivityUserName.value = toTitleCase(activity.userName || '');
+
+  // Same mapping as buildActiveActivityCard: known locations select themselves,
+  // custom values reveal the manual input.
+  const location = activity.location || '';
+  if (!location) {
+    ui.editActivityLocation.value = '';
+    ui.editActivityCustomLocation.value = '';
+    ui.editActivityCustomLocationWrap.classList.add('hidden');
+  } else if (LOCATION_OPTIONS.includes(location)) {
+    ui.editActivityLocation.value = location;
+    ui.editActivityCustomLocation.value = '';
+    ui.editActivityCustomLocationWrap.classList.add('hidden');
+  } else {
+    ui.editActivityLocation.value = OTHER_LOCATION;
+    ui.editActivityCustomLocation.value = location;
+    ui.editActivityCustomLocationWrap.classList.remove('hidden');
+  }
+
+  ui.editActivityWorkCode.value = formatWorkCodes(activity.workCode || '');
+  renderWorkCodeButtons(ui.editActivityWorkCodeOptions, ui.editActivityWorkCode);
+
+  ui.editActivityRemarks.value = activity.remarks || '';
+
+  // A Riwayat card may still be sitting swiped-open behind the modal.
+  if (openSwipeActivityId) {
+    closeSwipeItems();
+  }
+
+  ui.editActivityModal.classList.remove('hidden');
+  ui.editActivityModal.setAttribute('aria-hidden', 'false');
+}
+
+function hideEditActivityModal() {
+  pendingEditActivityId = null;
+  ui.editActivityModal.classList.add('hidden');
+  ui.editActivityModal.setAttribute('aria-hidden', 'true');
+}
+
+function updateEditActivityCustomLocationVisibility() {
+  const isCustom = ui.editActivityLocation.value === OTHER_LOCATION;
+
+  ui.editActivityLocation.classList.remove('field-invalid');
+  ui.editActivityCustomLocation.classList.remove('field-invalid');
+  ui.editActivityCustomLocationWrap.classList.toggle('hidden', !isCustom);
+
+  if (isCustom) {
+    ui.editActivityCustomLocation.focus();
+  }
+}
+
+// Mirrors getCardFormPayload: the same required fields, the same custom
+// location handling, and the same ' & '-joined workCode format. Times keep the
+// original startedAt date (tanggal is not editable) and recompute
+// durationMinutes with the same rounding as finishActivity().
+function readEditActivityPayload(activity) {
+  const startTimeValue = ui.editActivityStartTime.value;
+  const endTimeValue = ui.editActivityEndTime.value;
+
+  if (!startTimeValue) {
+    ui.editActivityStartTime.classList.add('field-invalid');
+    ui.editActivityStartTime.focus({ preventScroll: true });
+    throw new Error('Isi jam start aktivitas.');
+  }
+
+  if (!endTimeValue) {
+    ui.editActivityEndTime.classList.add('field-invalid');
+    ui.editActivityEndTime.focus({ preventScroll: true });
+    throw new Error('Isi jam end aktivitas.');
+  }
+
+  const originalStart = toJsDate(activity.startedAt);
+  const dateKey = originalStart ? getLocalDateKey(originalStart) : '';
+  const startDate = dateKey ? new Date(`${dateKey}T${startTimeValue}`) : null;
+  const endDate = dateKey ? new Date(`${dateKey}T${endTimeValue}`) : null;
+
+  if (!startDate || Number.isNaN(startDate.getTime()) || !endDate || Number.isNaN(endDate.getTime())) {
+    ui.editActivityStartTime.classList.add('field-invalid');
+    ui.editActivityEndTime.classList.add('field-invalid');
+    throw new Error('Waktu aktivitas tidak valid.');
+  }
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    ui.editActivityEndTime.classList.add('field-invalid');
+    ui.editActivityEndTime.focus({ preventScroll: true });
+    throw new Error('Jam end harus lebih besar dari jam start.');
+  }
+
+  let locationValue = ui.editActivityLocation.value;
+
+  if (!locationValue) {
+    ui.editActivityLocation.classList.add('field-invalid');
+    ui.editActivityLocation.focus({ preventScroll: true });
+    throw new Error('Pilih lokasi terlebih dahulu.');
+  }
+
+  if (locationValue === OTHER_LOCATION) {
+    const customValue = ui.editActivityCustomLocation.value.trim();
+
+    if (!customValue) {
+      ui.editActivityCustomLocation.classList.add('field-invalid');
+      ui.editActivityCustomLocation.focus({ preventScroll: true });
+      throw new Error('Isi lokasi manual jika memilih Other Location');
+    }
+
+    const exists = LOCATION_OPTIONS.some(
+      (item) => item.toLowerCase() === customValue.toLowerCase()
+    );
+
+    if (exists) {
+      ui.editActivityCustomLocation.classList.add('field-invalid');
+      ui.editActivityCustomLocation.focus({ preventScroll: true });
+      throw new Error('Lokasi sudah ada di daftar lokasi');
+    }
+
+    LOCATION_OPTIONS.push(customValue);
+    refreshAllLocationSelects();
+    locationValue = customValue;
+  }
+
+  const selectedWorkCodes = normalizeWorkCodes(ui.editActivityWorkCode.value);
+
+  if (!selectedWorkCodes.length) {
+    ui.editActivityWorkCodeOptions.classList.add('field-invalid');
+    throw new Error('Pilih minimal satu kode pengerjaan.');
+  }
+
+  return {
+    startedAt: Timestamp.fromDate(startDate),
+    endedAt: Timestamp.fromDate(endDate),
+    durationMinutes: Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000)),
+    inventoryCode: toUppercaseInventory(ui.editActivityInventory.value.trim()),
+    userName: toTitleCase(ui.editActivityUserName.value.trim()),
+    location: locationValue,
+    workCode: formatWorkCodes(selectedWorkCodes),
+    remarks: ui.editActivityRemarks.value.trim()
+  };
+}
+
+async function handleEditActivitySubmit(event) {
+  event.preventDefault();
+
+  const activityId = pendingEditActivityId;
+
+  if (!activityId) {
+    hideEditActivityModal();
+    return;
+  }
+
+  const activity = state.activities.find((item) => item.id === activityId);
+
+  if (!activity) {
+    hideEditActivityModal();
+    showToast('Aktivitas tidak ditemukan.', 'warning');
+    return;
+  }
+
+  let payload;
+  try {
+    payload = readEditActivityPayload(activity);
+  } catch (error) {
+    showToast(error.message, 'error');
+    return;
+  }
+
+  ui.editActivitySaveBtn.disabled = true;
+  ui.editActivitySaveBtn.textContent = 'Menyimpan...';
+
+  try {
+    // Writes back to the same Firestore document; the snapshot listener then
+    // re-renders Riwayat with the new values.
+    await updateActivity(activityId, {
+      startedAt: payload.startedAt,
+      endedAt: payload.endedAt,
+      durationMinutes: payload.durationMinutes,
+      inventoryCode: payload.inventoryCode,
+      userName: payload.userName,
+      location: payload.location,
+      workCode: payload.workCode,
+      remarks: payload.remarks
+    });
+
+    hideEditActivityModal();
+    showToast('Aktivitas berhasil diperbarui.', 'success');
+  } catch (error) {
+    console.error('[History] Edit error:', error);
+    showToast('Gagal menyimpan perubahan. Silakan coba lagi.', 'error');
+  } finally {
+    ui.editActivitySaveBtn.disabled = false;
+    ui.editActivitySaveBtn.textContent = 'Simpan';
+  }
+}
+
 function bindSwipeGestures() {
   ui.historyList.querySelectorAll('.swipe-item').forEach((item) => {
     const content = item.querySelector('.swipe-content');
+    const editButton = item.querySelector('.swipe-edit-action');
     const deleteButton = item.querySelector('.swipe-delete-action');
     let startX = 0;
     let startY = 0;
@@ -1555,6 +1815,13 @@ function bindSwipeGestures() {
 
       event.preventDefault();
     }, { passive: false });
+
+    editButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      // Only reachable once the card is fully open: pointer-events stays none
+      // until .is-ready, so a swipe or touch can never fire this.
+      openEditActivityModal(item.dataset.activityId);
+    });
 
     deleteButton.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -3314,6 +3581,9 @@ function bindEvents() {
     if (event.key === 'Escape' && !ui.historyFilterPanel.hidden) {
       setHistoryFilterPanelOpen(false);
     }
+    if (event.key === 'Escape' && !ui.editActivityModal.classList.contains('hidden')) {
+      hideEditActivityModal();
+    }
   });
 
   ui.confirmModal.addEventListener('click', (event) => {
@@ -3327,6 +3597,48 @@ function bindEvents() {
     if (event.target === ui.deleteConfirmModal) {
       hideDeleteConfirmation();
     }
+  });
+
+  // Tapping anywhere on the list that is NOT the open card (its own content
+  // click handler closes it) swipes it back to normal.
+  ui.historyList.addEventListener('click', (event) => {
+    const openItem = ui.historyList.querySelector('.swipe-item.is-open');
+    if (openItem && !openItem.contains(event.target)) {
+      setSwipePosition(openItem, 0);
+      openSwipeActivityId = null;
+    }
+  });
+  ui.editActivityForm.addEventListener('submit', handleEditActivitySubmit);
+  ui.editActivityCancelBtn.addEventListener('click', hideEditActivityModal);
+  ui.editActivityModal.addEventListener('click', (event) => {
+    if (event.target === ui.editActivityModal) {
+      hideEditActivityModal();
+    }
+  });
+  ui.editActivityLocation.addEventListener('change', updateEditActivityCustomLocationVisibility);
+  ui.editActivityStartTime.addEventListener('input', () => {
+    ui.editActivityStartTime.classList.remove('field-invalid');
+  });
+  ui.editActivityEndTime.addEventListener('input', () => {
+    ui.editActivityEndTime.classList.remove('field-invalid');
+  });
+  ui.editActivityCustomLocation.addEventListener('input', (event) => {
+    ui.editActivityCustomLocation.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
+  });
+  ui.editActivityInventory.addEventListener('input', (event) => {
+    event.target.value = toUppercaseInventory(event.target.value);
+    event.target.classList.remove('field-invalid');
+  });
+  ui.editActivityUserName.addEventListener('input', (event) => {
+    event.target.classList.remove('field-invalid');
+    applyTitleCaseInput(event.target);
+  });
+  ui.editActivityUserName.addEventListener('blur', () => {
+    ui.editActivityUserName.value = toTitleCase(ui.editActivityUserName.value || '');
+  });
+  ui.editActivityRemarks.addEventListener('input', () => {
+    ui.editActivityRemarks.classList.remove('field-invalid');
   });
   ui.cancelConfirmModal.addEventListener('click', (event) => {
     if (event.target === ui.cancelConfirmModal) {

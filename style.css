@@ -1281,13 +1281,24 @@ body.nav-hidden .add-activity-fab {
   will-change: transform;
 }
 
-.swipe-delete-action {
+.swipe-actions {
   position: absolute;
   top: 50%;
   right: 14px;
   z-index: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateY(-50%);
+}
+
+.swipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: var(--blob-width, 34px);
   height: var(--blob-height, 36px);
+  padding: 0;
   border: 0;
   border-radius: var(--blob-radius, 48% 52% 58% 42%);
   background: #dc2626;
@@ -1297,7 +1308,7 @@ body.nav-hidden .add-activity-fab {
   cursor: pointer;
   opacity: var(--blob-progress, 0);
   pointer-events: none;
-  transform: translateY(-50%) scale(var(--blob-scale, 0.78));
+  transform: scale(var(--blob-scale, 0.78));
   transform-origin: center;
   transition:
     width 180ms ease,
@@ -1309,25 +1320,37 @@ body.nav-hidden .add-activity-fab {
   box-shadow: 0 8px 18px rgba(220, 38, 38, 0.18);
 }
 
-.swipe-item.is-dragging .swipe-delete-action {
+.swipe-edit-action {
+  background: var(--primary);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.swipe-item.is-dragging .swipe-action {
   transition: none;
 }
 
-.swipe-item.is-dragging .trash-icon {
+.swipe-item.is-dragging .swipe-action-icon {
   transition: none;
 }
 
-.swipe-item.is-ready .swipe-delete-action {
-  width: 56px;
-  height: 56px;
+.swipe-item.is-ready .swipe-action {
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(-50%) scale(1);
+  transform: scale(1);
+}
+
+.swipe-item.is-ready .swipe-delete-action {
   box-shadow: 0 10px 24px rgba(220, 38, 38, 0.34);
 }
 
-.trash-icon {
+.swipe-item.is-ready .swipe-edit-action {
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.34);
+}
+
+.swipe-action-icon {
   position: relative;
   z-index: 1;
   display: block;
@@ -1350,19 +1373,24 @@ body.nav-hidden .add-activity-fab {
   background: #b91c1c;
 }
 
-.swipe-item.is-ready .swipe-delete-action:active {
-  transform: translateY(-50%) scale(0.94);
+.swipe-edit-action:hover,
+.swipe-edit-action:focus-visible {
+  background: #1d4ed8;
 }
 
-.swipe-item.is-settling .swipe-delete-action {
+.swipe-item.is-ready .swipe-action:active {
+  transform: scale(0.94);
+}
+
+.swipe-item.is-settling .swipe-action {
   animation: liquid-settle 460ms cubic-bezier(0.22, 0.8, 0.25, 1);
 }
 
 @keyframes liquid-settle {
-  0% { transform: translateY(-50%) scale(0.86); }
-  42% { transform: translateY(-50%) scale(1.06); }
-  72% { transform: translateY(-50%) scale(0.98); }
-  100% { transform: translateY(-50%) scale(1); }
+  0% { transform: scale(0.86); }
+  42% { transform: scale(1.06); }
+  72% { transform: scale(0.98); }
+  100% { transform: scale(1); }
 }
 
 /* Delete exit: fade + slight left drift + height collapse so the cards below

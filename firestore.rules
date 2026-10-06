@@ -50,17 +50,21 @@ service cloud.firestore {
       allow get, list: if signedIn()
         && resource.data.userId == request.auth.uid;
 
+      // Riwayat Edit updates the SAME document: inventory/user/location/work
+      // code/remarks plus Jam Start/Jam End (startedAt/endedAt/durationMinutes).
+      // Completed/cancelled docs may be corrected but never re-opened: their
+      // status is frozen. Ongoing docs keep their finish/cancel transitions.
       allow update: if signedIn()
         && resource.data.userId == request.auth.uid
         && validActivity(request.resource.data)
         && request.resource.data.userId == resource.data.userId
-        && request.resource.data.startedAt == resource.data.startedAt
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'inventoryCode',
           'userName',
           'location',
           'workCode',
           'remarks',
+          'startedAt',
           'endedAt',
           'durationMinutes',
           'status'
@@ -70,7 +74,7 @@ service cloud.firestore {
             && (request.resource.data.status == resource.data.status
               || request.resource.data.status in ['completed', 'cancelled']))
           || (resource.data.status in ['completed', 'cancelled']
-            && request.resource.data.diff(resource.data).affectedKeys().size() == 0)
+            && request.resource.data.status == resource.data.status)
         )
         && (
           request.resource.data.status == 'ongoing'

@@ -496,6 +496,75 @@
       </div>
     </div>
 
+    <div id="edit-activity-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-card manual-entry-card">
+        <h3>Edit Aktivitas</h3>
+        <form id="edit-activity-form" class="activity-form" novalidate>
+          <div class="field-grid two-column">
+            <label>
+              <span>Tanggal (tidak dapat diubah)</span>
+              <input id="edit-activity-date" type="text" readonly tabindex="-1" />
+            </label>
+
+            <div class="manual-time-grid">
+              <label>
+                <span>Jam Start</span>
+                <input id="edit-activity-start-time" type="time" />
+              </label>
+              <label>
+                <span>Jam End</span>
+                <input id="edit-activity-end-time" type="time" />
+              </label>
+            </div>
+          </div>
+
+          <div class="field-grid two-column">
+            <label>
+              <span>Kode Inventaris PC/Laptop</span>
+              <input id="edit-activity-inventory" type="text" maxlength="50" placeholder="Contoh: PC24059MEB" />
+            </label>
+
+            <label>
+              <span>Nama User</span>
+              <input id="edit-activity-user-name" type="text" maxlength="80" placeholder="Nama user" />
+            </label>
+          </div>
+
+          <div class="field-grid two-column">
+            <div class="location-field">
+              <label>
+                <span>Lokasi</span>
+                <select id="edit-activity-location"></select>
+              </label>
+
+              <div id="edit-activity-custom-location-wrap" class="custom-location-wrap hidden">
+                <label>
+                  <span>Lokasi Lainnya</span>
+                  <input id="edit-activity-custom-location" type="text" maxlength="80" placeholder="Masukkan lokasi..." />
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <span class="work-code-label">Kode Pengerjaan</span>
+              <div id="edit-activity-work-code-options" class="work-code-options" role="group" aria-label="Kode Pengerjaan"></div>
+              <input id="edit-activity-work-code" type="hidden" value="" />
+            </div>
+          </div>
+
+          <label>
+            <span>Keterangan / Remarks</span>
+            <textarea id="edit-activity-remarks" rows="2" maxlength="2000" placeholder="Masukkan keterangan atau catatan tambahan..."></textarea>
+          </label>
+
+          <div class="modal-actions">
+            <button id="edit-activity-cancel" class="secondary-btn" type="button">Batal</button>
+            <button id="edit-activity-save" class="primary-btn" type="submit">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div id="toast" class="toast hidden" aria-live="assertive"></div>
 
     <template id="active-activity-template">
