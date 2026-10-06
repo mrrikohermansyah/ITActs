@@ -1,4 +1,5 @@
 import { WORK_CODES, LOCATION_OPTIONS, OTHER_LOCATION } from './config.js';
+import { openCustomDatePicker, openCustomTimePicker } from './pickers.js';
 import { auth, loginUser, logoutUser, registerUser, resetPassword, subscribeToAuth, updateCurrentUserDisplayName } from './auth.js';
 import { cancelActivity, createActivity, deleteActivity, finishActivity, generateActivityId, subscribeToActivities, updateActivity } from './firestore.js';
 import { Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -3403,7 +3404,34 @@ function handleAuthStateChange(user) {
   }
 }
 
+function setupCustomPickers() {
+  document.querySelectorAll('.picker-trigger').forEach((element) => {
+    element.addEventListener('click', () => {
+      if (element.disabled) {
+        return;
+      }
+
+      const kind = element.dataset.picker;
+      const options = {
+        value: element.value,
+        onSelect: (value) => {
+          element.value = value;
+          element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+
+      if (kind === 'date') {
+        openCustomDatePicker(options);
+      } else {
+        openCustomTimePicker(options);
+      }
+    });
+  });
+}
+
 function bindEvents() {
+  setupCustomPickers();
   document.querySelectorAll('[data-view]').forEach((button) => {
     button.addEventListener('click', () => {
       const nextView = button.dataset.view;

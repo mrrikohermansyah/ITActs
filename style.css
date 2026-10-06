@@ -1228,10 +1228,7 @@ body.nav-hidden .add-activity-fab {
   font-size: 0.82rem;
 }
 
-/* Same WebKit guard as .manual-entry-card: native temporal inputs render as
-   inline-flex with an intrinsic content width, so the box is forced to block
-   and kept shrinkable within its column. Native picker stays untouched. */
-.filter-field input[type="date"] {
+.filter-field .picker-trigger {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -1693,15 +1690,12 @@ body.nav-hidden .add-activity-fab {
 }
 
 /* Native date/time inputs keep their native rendering — forcing
-   -webkit-appearance:none on iOS makes temporal inputs overflow their
-   container, so it must stay untouched. 16px font stops Safari iOS
+/* Custom-picker triggers (readonly text inputs). 16px font stops Safari iOS
    auto-zoom on focus; 48px min-height is a comfortable thumb target.
-   WebKit lays native temporal inputs out as inline-flex with an intrinsic
-   content width, so the box is display:block at every viewport width —
-   the quirk is not limited to phone widths (iPad, landscape, and
-   desktop-mode iOS viewports behave the same). */
-.manual-entry-card input[type="date"],
-.manual-entry-card input[type="time"] {
+   display:block + min-width:0 keeps the box shrinkable inside flex/grid
+   wrappers at every viewport width. */
+.manual-entry-card .picker-trigger,
+.modal-card .picker-trigger {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -1710,6 +1704,23 @@ body.nav-hidden .add-activity-fab {
   text-align: left;
   font-size: 1rem;
   min-height: 48px;
+}
+
+/* Readonly trigger inputs: show a caret affordance and pointer cursor so the
+   field reads as tappable on touch devices. */
+.picker-trigger {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 34px;
+}
+
+.picker-trigger:disabled {
+  cursor: default;
+  background-image: none;
+  padding-right: 14px;
 }
 
 /* Keep the focused field clear of the card edges when the browser scrolls it

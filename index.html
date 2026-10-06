@@ -206,14 +206,14 @@
               <div class="filter-date-range">
                 <label class="filter-field">
                   <span>Dari</span>
-                  <input id="filter-date-from" type="date" />
+                  <input id="filter-date-from" type="text" class="picker-trigger" data-picker="date" readonly inputmode="none" autocomplete="off" />
                 </label>
 
                 <span class="filter-date-separator" aria-hidden="true">&ndash;</span>
 
                 <label class="filter-field">
                   <span>Sampai</span>
-                  <input id="filter-date-to" type="date" />
+                  <input id="filter-date-to" type="text" class="picker-trigger" data-picker="date" readonly inputmode="none" autocomplete="off" />
                 </label>
               </div>
 
@@ -380,18 +380,18 @@
           <div class="manual-entry-step" data-step="time">
             <label>
               <span>Tanggal</span>
-              <input id="manual-entry-date" type="date" />
+              <input id="manual-entry-date" type="text" class="picker-trigger" data-picker="date" readonly inputmode="none" autocomplete="off" />
             </label>
 
             <div class="manual-time-grid">
               <label>
                 <span>Mulai</span>
-                <input id="manual-entry-start-time" type="time" />
+                <input id="manual-entry-start-time" type="text" class="picker-trigger" data-picker="time" readonly inputmode="none" autocomplete="off" />
               </label>
 
               <label>
                 <span>Selesai</span>
-                <input id="manual-entry-end-time" type="time" />
+                <input id="manual-entry-end-time" type="text" class="picker-trigger" data-picker="time" readonly inputmode="none" autocomplete="off" />
               </label>
             </div>
 
@@ -509,11 +509,11 @@
             <div class="manual-time-grid">
               <label>
                 <span>Jam Start</span>
-                <input id="edit-activity-start-time" type="time" />
+                <input id="edit-activity-start-time" type="text" class="picker-trigger" data-picker="time" readonly inputmode="none" autocomplete="off" />
               </label>
               <label>
                 <span>Jam End</span>
-                <input id="edit-activity-end-time" type="time" />
+                <input id="edit-activity-end-time" type="text" class="picker-trigger" data-picker="time" readonly inputmode="none" autocomplete="off" />
               </label>
             </div>
           </div>
