@@ -2887,6 +2887,11 @@ function validateManualEntryDetails() {
   // the topmost one gets highlighted first.
   const requiredFields = [
     {
+      element: ui.manualEntryInventory,
+      focusTarget: ui.manualEntryInventory,
+      isEmpty: !ui.manualEntryInventory.value.trim()
+    },
+    {
       element: ui.manualEntryUserName,
       focusTarget: ui.manualEntryUserName,
       isEmpty: !ui.manualEntryUserName.value.trim()
@@ -2895,11 +2900,6 @@ function validateManualEntryDetails() {
       element: ui.manualEntryLocation,
       focusTarget: ui.manualEntryLocation,
       isEmpty: !ui.manualEntryLocation.value
-    },
-    {
-      element: ui.manualEntryInventory,
-      focusTarget: ui.manualEntryInventory,
-      isEmpty: !ui.manualEntryInventory.value.trim()
     },
     {
       element: ui.manualEntryWorkCodeOptions,
