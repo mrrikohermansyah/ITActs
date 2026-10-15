@@ -1,9 +1,10 @@
-const CACHE_VERSION = 'actlog-static-v11';
+const CACHE_VERSION = 'actlog-static-v12';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './pickers.js',
   './auth.js',
   './config.js',
   './firestore.js',
@@ -52,7 +53,15 @@ self.addEventListener('fetch', (event) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        return caches.match('./index.html');
+
+        // The shell fallback is a document. Handing it to an asset request (the
+        // .xlsx template, a JSON call) makes the caller parse HTML as its own
+        // payload, so offline failures stay real errors instead.
+        if (event.request.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
+
+        return Response.error();
       }))
   );
 });

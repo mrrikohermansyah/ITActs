@@ -1121,6 +1121,18 @@ body.nav-hidden .add-activity-fab {
   stroke-width: 1.8;
 }
 
+/* Export busy state: the label is hidden under 360px, so the icon carries the
+   signal there too. */
+.excel-export-btn:disabled {
+  pointer-events: none;
+  opacity: 0.72;
+  box-shadow: none;
+}
+
+.excel-export-btn.is-exporting .excel-icon {
+  animation: spin 900ms linear infinite;
+}
+
 .filter-panel-header {
   display: flex;
   align-items: center;
@@ -1275,6 +1287,14 @@ body.nav-hidden .add-activity-fab {
   z-index: 1;
   margin: 0;
   transition: transform 240ms cubic-bezier(0.22, 0.8, 0.25, 1);
+}
+
+/* Promoted only for the card being interacted with. A permanent
+   will-change:transform on every card means one compositor layer per card,
+   which costs memory and slows scrolling on low-end phones. */
+.swipe-item.is-dragging .swipe-content,
+.swipe-item.is-settling .swipe-content,
+.swipe-item.is-open .swipe-content {
   will-change: transform;
 }
 
@@ -2143,5 +2163,24 @@ body.nav-hidden .add-activity-fab {
 
   .toast {
     min-width: 0;
+  }
+}
+
+/* Reduced motion: movement is removed, state changes still happen instantly.
+   Durations are collapsed rather than zeroed so transitionend/animationend keep
+   firing — the card exit and delete-collapse paths depend on those events. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spinner,
+  .excel-export-btn.is-exporting .excel-icon {
+    animation: none !important;
   }
 }

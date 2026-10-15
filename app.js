@@ -52,6 +52,7 @@ const ui = {
   historyFilterToggle: document.querySelector('#history-filter-toggle'),
   historyFilterClose: document.querySelector('#history-filter-close'),
   historyExportBtn: document.querySelector('#history-export-btn'),
+  historyExportLabel: document.querySelector('#history-export-btn .excel-export-label'),
   historyFilterPanel: document.querySelector('#history-filter-panel'),
   historyFilterReset: document.querySelector('#history-filter-reset'),
   historyFilterApply: document.querySelector('#history-filter-apply'),
@@ -172,6 +173,10 @@ const BOTTOM_NAV_SCROLL_THRESHOLD = 8;
 const BOTTOM_NAV_TOP_TOLERANCE = 2;
 
 const bottomNavMedia = window.matchMedia(BOTTOM_NAV_MEDIA_QUERY);
+// Honored by the CSS media block and by the JS scrolls below, which CSS cannot
+// reach. Read at call time so a live preference change takes effect.
+const reducedMotionMedia = window.matchMedia('(prefers-reduced-motion: reduce)');
+const scrollMotionBehavior = () => (reducedMotionMedia.matches ? 'auto' : 'smooth');
 let bottomNavHidden = false;
 let bottomNavWasMobile = bottomNavMedia.matches;
 let bottomNavLastScrollY = window.scrollY;
@@ -238,6 +243,17 @@ function normalizeWorkCodes(value) {
 function formatWorkCodes(value) {
   const items = normalizeWorkCodes(value);
   return items.join(' & ');
+}
+
+// Coalesces a burst of the same event (typing) into one run. Only for text
+// input: never for save/delete/export, where a delayed action is a behaviour bug.
+function debounce(fn, waitMs) {
+  let timerId = null;
+
+  return (...args) => {
+    clearTimeout(timerId);
+    timerId = setTimeout(() => fn(...args), waitMs);
+  };
 }
 
 function showToast(message, type = 'success') {
@@ -499,10 +515,27 @@ function getLocalDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
+// Constructing an Intl formatter costs far more than formatting with it, and
+// History formats one per card per render, so the two shapes used by the feed are
+// built once and reused.
+const historyDateTimeFormatter = new Intl.DateTimeFormat('id-ID', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit'
+});
+
+const historyDateLabelFormatter = new Intl.DateTimeFormat('id-ID', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric'
+});
+
 function getCard(activityId) {
-  return Array.from(
-    ui.activeActivitiesList.querySelectorAll('.active-activity-card')
-  ).find((card) => card.dataset.activityId === activityId) || null;
+  return ui.activeActivitiesList.querySelector(
+    `.active-activity-card[data-activity-id="${activityId}"]`
+  );
 }
 
 // Called right after a new activity card is rendered: add a subtle "new"
@@ -523,7 +556,7 @@ function focusNewActivityCard(activityId) {
   requestAnimationFrame(() => {
     const topOffset = 20;
     const targetY = card.getBoundingClientRect().top + window.scrollY - topOffset;
-    window.scrollTo({ top: Math.max(targetY, 0), behavior: 'smooth' });
+    window.scrollTo({ top: Math.max(targetY, 0), behavior: scrollMotionBehavior() });
   });
 }
 
@@ -666,7 +699,7 @@ function getCardFormPayload(card) {
       // dropdown must not get the invalid highlight.
       customInput.classList.add('field-invalid');
       customInput.focus({ preventScroll: true });
-      customInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      customInput.scrollIntoView({ behavior: scrollMotionBehavior(), block: 'center' });
       throw new Error('Isi lokasi manual jika memilih Other Location');
     }
 
@@ -757,7 +790,7 @@ function validateCardEndFields(card) {
 
   firstInvalidField.element.classList.add('field-invalid');
   firstInvalidField.focusTarget?.focus({ preventScroll: true });
-  firstInvalidField.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  firstInvalidField.element.scrollIntoView({ behavior: scrollMotionBehavior(), block: 'center' });
   return false;
 }
 
@@ -1241,7 +1274,7 @@ function formatDateKeyLabel(dateKey) {
 
   return Number.isNaN(date.getTime())
     ? dateKey
-    : new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+    : historyDateLabelFormatter.format(date);
 }
 
 function getResumeScopeLabel() {
@@ -1279,6 +1312,69 @@ function renderHistoryResume(filtered) {
   ui.resumeScope.textContent = getResumeScopeLabel();
 }
 
+// The fields a History card paints. A card is only rewritten when this changes,
+// so an unrelated snapshot cannot make the feed rebuild HTML it is already showing.
+function historyCardSignature(item) {
+  return [
+    item.userName || '',
+    toMillis(item.startedAt),
+    item.endedAt ? toMillis(item.endedAt) : '',
+    item.workCode || 'HW',
+    item.durationMinutes ?? 0,
+    item.status || '',
+    item.inventoryCode || '',
+    item.location || '',
+    item.remarks || '',
+  ].join('\u0000');
+}
+
+function historyCardInnerHtml(item) {
+  const startedAt = toJsDate(item.startedAt);
+  const endedAt = toJsDate(item.endedAt);
+  const workCode = item.workCode || 'HW';
+  const durationText = item.durationMinutes ?? 0;
+  const displayedUserName = item.userName || 'User';
+
+  return `
+    <div class="swipe-actions">
+      <button class="swipe-action swipe-edit-action" type="button" data-edit-activity-id="${escapeHtml(item.id)}" aria-label="Edit aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
+        <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+        </svg>
+      </button>
+      <button class="swipe-action swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
+        <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+        </svg>
+      </button>
+    </div>
+    <div class="feed-card card swipe-content">
+      <div class="feed-header">
+        <div>
+          <h3>${escapeHtml(displayedUserName)}</h3>
+          <p>${formatDateTime(startedAt)}${endedAt ? ' - ' + formatDateTime(endedAt) : ''}</p>
+        </div>
+        <span class="work-badge ${escapeHtml(String(workCode).toLowerCase())}">${escapeHtml(workCode)}</span>
+      </div>
+
+      <div class="feed-body">
+        <div class="meta-grid">
+          <span><strong>Inventaris:</strong> ${escapeHtml(item.inventoryCode || '-')}</span>
+          <span><strong>Lokasi:</strong> ${escapeHtml(item.location || '-')}</span>
+          <span><strong>Durasi:</strong> ${escapeHtml(durationText)} menit</span>
+          <span><strong>Status:</strong> ${item.status === 'ongoing' ? 'Berlangsung' : item.status === 'cancelled' ? 'Dibatalkan' : 'Selesai'}</span>
+        </div>
+        <p class="remarks">${escapeHtml(item.remarks || 'Tidak ada keterangan.')}</p>
+      </div>
+    </div>
+  `;
+}
+
+// Keyed nodes for the feed: activityId -> { node, signature }. Bounded to the
+// currently rendered set, so it never grows past what History shows.
+const historyCardNodes = new Map();
+let lastHistoryListSignature = '';
+
 function renderHistory() {
   // A card is collapsing right now: leave the list alone until it is out of the
   // DOM, otherwise a snapshot-driven re-render would cut the animation short.
@@ -1290,59 +1386,79 @@ function renderHistory() {
   const filtered = getFilteredHistoryData();
   renderHistoryResume(filtered);
 
+  const listSignature = filtered
+    .map((item) => `${item.id}\u0001${historyCardSignature(item)}`)
+    .join('\u0002');
+
+  // Most snapshots change nothing this feed displays (saving details on a running
+  // activity, an activity on another day). Rebuilding every card to paint the same
+  // HTML is the most expensive work this view does, so skip it.
+  if (listSignature === lastHistoryListSignature) {
+    return;
+  }
+  lastHistoryListSignature = listSignature;
+
   if (!filtered.length) {
     openSwipeActivityId = null;
+    historyCardNodes.clear();
     ui.historyList.innerHTML = '<div class="empty-state">Belum ada data sesuai filter.</div>';
     return;
   }
 
-  ui.historyList.innerHTML = filtered
-    .map((item) => {
-      const startedAt = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
-      const endedAt = item.endedAt?.toDate ? item.endedAt.toDate() : item.endedAt ? new Date(item.endedAt) : null;
-      const workCode = item.workCode || 'HW';
-      const durationText = item.durationMinutes ?? 0;
-      const displayedUserName = item.userName || 'User';
+  const desiredNodes = [];
 
-      return `
-        <article class="swipe-item" data-activity-id="${escapeHtml(item.id)}">
-          <div class="swipe-actions">
-            <button class="swipe-action swipe-edit-action" type="button" data-edit-activity-id="${escapeHtml(item.id)}" aria-label="Edit aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
-              <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
-              </svg>
-            </button>
-            <button class="swipe-action swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
-              <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-              </svg>
-            </button>
-          </div>
-          <div class="feed-card card swipe-content">
-            <div class="feed-header">
-              <div>
-                <h3>${escapeHtml(displayedUserName)}</h3>
-                <p>${formatDateTime(startedAt)}${endedAt ? ' - ' + formatDateTime(endedAt) : ''}</p>
-              </div>
-              <span class="work-badge ${escapeHtml(String(workCode).toLowerCase())}">${escapeHtml(workCode)}</span>
-            </div>
+  filtered.forEach((item) => {
+    const signature = historyCardSignature(item);
+    let entry = historyCardNodes.get(item.id);
 
-            <div class="feed-body">
-              <div class="meta-grid">
-                <span><strong>Inventaris:</strong> ${escapeHtml(item.inventoryCode || '-')}</span>
-                <span><strong>Lokasi:</strong> ${escapeHtml(item.location || '-')}</span>
-                <span><strong>Durasi:</strong> ${escapeHtml(durationText)} menit</span>
-                <span><strong>Status:</strong> ${item.status === 'ongoing' ? 'Berlangsung' : item.status === 'cancelled' ? 'Dibatalkan' : 'Selesai'}</span>
-              </div>
-              <p class="remarks">${escapeHtml(item.remarks || 'Tidak ada keterangan.')}</p>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join('');
+    if (!entry) {
+      const article = document.createElement('article');
+      article.className = 'swipe-item';
+      article.dataset.activityId = item.id;
+      entry = { node: article, signature: null };
+      historyCardNodes.set(item.id, entry);
+    }
 
-  bindSwipeGestures();
+    if (entry.signature !== signature) {
+      entry.node.innerHTML = historyCardInnerHtml(item);
+      entry.signature = signature;
+
+      // Freshly painted content carries no inline transform, so an open card would
+      // keep .is-ready (pointer-events on) while its buttons render invisible.
+      if (entry.node.classList.contains('is-open')) {
+        entry.node.classList.remove('is-open', 'is-ready', 'is-settling', 'is-dragging');
+        if (openSwipeActivityId === item.id) {
+          openSwipeActivityId = null;
+        }
+      }
+    }
+
+    desiredNodes.push(entry.node);
+  });
+
+  const desiredIds = new Set(filtered.map((item) => item.id));
+  const desiredNodeSet = new Set(desiredNodes);
+
+  Array.from(ui.historyList.children).forEach((child) => {
+    if (!desiredNodeSet.has(child)) {
+      child.remove();
+    }
+  });
+
+  historyCardNodes.forEach((entry, id) => {
+    if (!desiredIds.has(id)) {
+      historyCardNodes.delete(id);
+    }
+  });
+
+  // Insert-before only where the slot is actually wrong, so an untouched list
+  // costs nothing and a new card moves just the one node.
+  desiredNodes.forEach((node, index) => {
+    const current = ui.historyList.children[index];
+    if (current !== node) {
+      ui.historyList.insertBefore(node, current || null);
+    }
+  });
 }
 
 // The reveal hides [Edit][Delete] behind the card: two 52px actions with a 10px
@@ -1758,84 +1874,112 @@ async function handleEditActivitySubmit(event) {
   }
 }
 
-function bindSwipeGestures() {
-  ui.historyList.querySelectorAll('.swipe-item').forEach((item) => {
-    const content = item.querySelector('.swipe-content');
-    const editButton = item.querySelector('.swipe-edit-action');
-    const deleteButton = item.querySelector('.swipe-delete-action');
-    let startX = 0;
-    let startY = 0;
-    let startOffset = 0;
-    let isHorizontalSwipe = false;
+// Only one card can be dragged at a time, so the swipe gesture needs a single set
+// of tracking fields instead of one closure per card.
+const swipeDrag = {
+  item: null,
+  startX: 0,
+  startY: 0,
+  startOffset: 0,
+  isHorizontal: false
+};
 
-    item.addEventListener('touchstart', (event) => {
-      const touch = event.changedTouches[0];
-      startX = touch.clientX;
-      startY = touch.clientY;
-      startOffset = item.classList.contains('is-open') ? -SWIPE_MAX_OFFSET : 0;
-      isHorizontalSwipe = false;
-      item.classList.remove('is-settling');
-      closeSwipeItems(item.dataset.activityId);
-    }, { passive: true });
+// Bound once on the list rather than per card: a feed of N cards used to cost 6N
+// listeners on every render, and cards are now reused instead of rebuilt.
+function bindHistoryGestures() {
+  const list = ui.historyList;
 
-    item.addEventListener('touchmove', (event) => {
-      const touch = event.changedTouches[0];
-      const deltaX = touch.clientX - startX;
-      const deltaY = touch.clientY - startY;
+  list.addEventListener('touchstart', (event) => {
+    const item = event.target.closest('.swipe-item');
+    if (!item) {
+      return;
+    }
 
-      if (!isHorizontalSwipe && Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        isHorizontalSwipe = true;
-      }
+    const touch = event.changedTouches[0];
+    swipeDrag.item = item;
+    swipeDrag.startX = touch.clientX;
+    swipeDrag.startY = touch.clientY;
+    swipeDrag.startOffset = item.classList.contains('is-open') ? -SWIPE_MAX_OFFSET : 0;
+    swipeDrag.isHorizontal = false;
+    item.classList.remove('is-settling');
+    closeSwipeItems(item.dataset.activityId);
+  }, { passive: true });
 
-      if (!isHorizontalSwipe) {
-        return;
-      }
+  list.addEventListener('touchmove', (event) => {
+    if (!swipeDrag.item) {
+      return;
+    }
 
-      event.preventDefault();
-      scheduleSwipePosition(item, startOffset + deltaX);
-    }, { passive: false });
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - swipeDrag.startX;
+    const deltaY = touch.clientY - swipeDrag.startY;
 
-    item.addEventListener('touchend', (event) => {
-      if (!isHorizontalSwipe) {
-        return;
-      }
+    if (!swipeDrag.isHorizontal && Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      swipeDrag.isHorizontal = true;
+    }
 
-      const touch = event.changedTouches[0];
-      const deltaX = touch.clientX - startX;
-      const shouldOpen = deltaX <= -SWIPE_THRESHOLD || startOffset < 0 && deltaX < 20;
+    if (!swipeDrag.isHorizontal) {
+      return;
+    }
 
-      cancelPendingSwipeFrame(item);
+    event.preventDefault();
+    scheduleSwipePosition(swipeDrag.item, swipeDrag.startOffset + deltaX);
+  }, { passive: false });
 
-      if (shouldOpen) {
-        settleSwipeItem(item);
-        openSwipeActivityId = item.dataset.activityId;
-      } else {
-        setSwipePosition(item, 0);
-        openSwipeActivityId = null;
-      }
+  const endDrag = (event) => {
+    const item = swipeDrag.item;
+    swipeDrag.item = null;
 
-      event.preventDefault();
-    }, { passive: false });
+    if (!item || !swipeDrag.isHorizontal) {
+      return;
+    }
 
-    editButton.addEventListener('click', (event) => {
-      event.stopPropagation();
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - swipeDrag.startX;
+    const shouldOpen = deltaX <= -SWIPE_THRESHOLD || swipeDrag.startOffset < 0 && deltaX < 20;
+
+    cancelPendingSwipeFrame(item);
+
+    if (shouldOpen) {
+      settleSwipeItem(item);
+      openSwipeActivityId = item.dataset.activityId;
+    } else {
+      setSwipePosition(item, 0);
+      openSwipeActivityId = null;
+    }
+
+    event.preventDefault();
+  };
+
+  list.addEventListener('touchend', endDrag, { passive: false });
+
+  list.addEventListener('touchcancel', () => {
+    swipeDrag.item = null;
+  }, { passive: true });
+
+  list.addEventListener('click', (event) => {
+    const editButton = event.target.closest('.swipe-edit-action');
+    if (editButton) {
       // Only reachable once the card is fully open: pointer-events stays none
       // until .is-ready, so a swipe or touch can never fire this.
-      openEditActivityModal(item.dataset.activityId);
-    });
+      openEditActivityModal(editButton.closest('.swipe-item').dataset.activityId);
+      return;
+    }
 
-    deleteButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      closeSwipeItems(item.dataset.activityId);
-      openDeleteConfirmation(item.dataset.activityId);
-    });
+    const deleteButton = event.target.closest('.swipe-delete-action');
+    if (deleteButton) {
+      const activityId = deleteButton.closest('.swipe-item').dataset.activityId;
+      closeSwipeItems(activityId);
+      openDeleteConfirmation(activityId);
+      return;
+    }
 
-    content.addEventListener('click', () => {
-      if (openSwipeActivityId === item.dataset.activityId) {
-        setSwipePosition(item, 0);
-        openSwipeActivityId = null;
-      }
-    });
+    // Anywhere else: an open card goes back to normal.
+    const openItem = list.querySelector('.swipe-item.is-open');
+    if (openItem) {
+      setSwipePosition(openItem, 0);
+      openSwipeActivityId = null;
+    }
   });
 }
 
@@ -1899,8 +2043,8 @@ function toProperCase(text) {
     .replace(LOCATION_ACRONYM_PATTERN, (word) => word.toUpperCase());
 }
 
-function getExportRows() {
-  return getFilteredHistoryData().map((item) => {
+function getExportRows(filteredActivities = null) {
+  return (filteredActivities || getFilteredHistoryData()).map((item) => {
     const startDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
     // ExcelJS derives the serial from UTC milliseconds, so rebuild the local
     // calendar day at UTC midnight: the cell holds a whole-day serial with no
@@ -1926,7 +2070,7 @@ function getExportRows() {
   });
 }
 
-function getExportPeriodLabel() {
+function getExportPeriodLabel(filteredActivities = null) {
   // Month-granularity label used for the "Periode" cell and the file name.
   // Anchored on the earliest explicit date bound so an empty result set still
   // reports the period the user asked for.
@@ -1939,21 +2083,26 @@ function getExportPeriodLabel() {
     }
   }
 
-  const filtered = getFilteredHistoryData();
+  const filtered = filteredActivities || getFilteredHistoryData();
   if (!filtered.length) {
     return '';
   }
 
-  const sortedDates = filtered
-    .map((item) => item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt))
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .sort((a, b) => a - b);
+  // Earliest activity day only; a full sort just to read one end of the range is
+  // wasted work on a long history.
+  let earliestMs = Infinity;
+  filtered.forEach((item) => {
+    const ms = toMillis(item.startedAt);
+    if (ms && ms < earliestMs) {
+      earliestMs = ms;
+    }
+  });
 
-  if (!sortedDates.length) {
+  if (earliestMs === Infinity) {
     return '';
   }
 
-  const start = sortedDates[0];
+  const start = new Date(earliestMs);
   return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
 }
 
@@ -2100,12 +2249,6 @@ function snapshotProtectedTemplateColumns(worksheet) {
   return protectedColumns;
 }
 
-function summarizeProtectedTemplateColumns(snapshot) {
-  return snapshot
-    .filter(({ value }) => value !== null && value !== undefined && value !== '')
-    .map(({ rowNumber, columnNumber, value }) => ({ rowNumber, columnNumber, value }));
-}
-
 function assertProtectedTemplateColumnsIntact(worksheet, snapshot, rowOffset = 0) {
   const changedCells = snapshot.filter(({ rowNumber, columnNumber, value }) => {
     const currentValue = worksheet.getCell(rowNumber + rowOffset, columnNumber).value;
@@ -2113,6 +2256,8 @@ function assertProtectedTemplateColumnsIntact(worksheet, snapshot, rowOffset = 0
   });
 
   if (changedCells.length) {
+    // The cells themselves only cost anything to read in the failure case.
+    console.error('[Export] Protected template columns changed', changedCells.slice(0, 10));
     throw new Error(`Template columns 16-23 were modified (${changedCells.length} cells).`);
   }
 
@@ -2493,12 +2638,39 @@ function setupNewWorksheet(worksheet, rows) {
   });
 }
 
+// A long export runs on a 950KB library plus a template download, so a second
+// click would otherwise start a second full export in parallel.
+let exportInFlight = false;
+
+function setExportBusy(isBusy) {
+  ui.historyExportBtn.disabled = isBusy;
+  ui.historyExportBtn.classList.toggle('is-exporting', isBusy);
+  ui.historyExportBtn.setAttribute('aria-busy', String(isBusy));
+  ui.historyExportLabel.textContent = isBusy ? 'Menyiapkan…' : 'Excel';
+}
+
 async function exportExcel() {
   if (!state.currentUser) {
     showToast('Silakan login terlebih dahulu', 'error');
     return;
   }
 
+  if (exportInFlight) {
+    return;
+  }
+
+  exportInFlight = true;
+  setExportBusy(true);
+
+  try {
+    await runExcelExport();
+  } finally {
+    exportInFlight = false;
+    setExportBusy(false);
+  }
+}
+
+async function runExcelExport() {
   if (!isExcelJSAvailable()) {
     try {
       await loadExcelJS();
@@ -2509,7 +2681,8 @@ async function exportExcel() {
     }
   }
 
-  const rows = getExportRows();
+  const filteredActivities = getFilteredHistoryData();
+  const rows = getExportRows(filteredActivities);
 
   if (!rows.length) {
     showToast('Tidak ada data riwayat untuk diekspor.', 'warning');
@@ -2536,8 +2709,7 @@ async function exportExcel() {
     const templateFooterSnapshot = templateFooterStart
       ? snapshotTemplateRange(worksheet, templateFooterStart, templateFooterEnd)
       : [];
-    console.log('Template col 16-23 before:', summarizeProtectedTemplateColumns(protectedTemplateColumns));
-    console.log('Template footer before:', templateFooterSnapshot.filter(({ value }) => value !== null && value !== undefined && value !== ''));
+
     const hasTemplateData = populateTemplateWorksheet(worksheet, rows);
     if (!hasTemplateData) {
       throw new Error('Data History gagal ditulis ke worksheet template.');
@@ -2556,11 +2728,6 @@ async function exportExcel() {
       ['date', 'inventory', 'code', 'location', 'remarks', 'user', 'duration', 'quality']
         .map((key) => templateHeaderInfo.columns[key])
     );
-    console.log('Template col 16-23 after:', summarizeProtectedTemplateColumns(snapshotProtectedTemplateColumns(worksheet)));
-    console.log('Template footer after:', {
-      footerStartRow: hasTemplateData.footerStartRow,
-      insertedRows: hasTemplateData.insertedRows
-    });
 
     workbook.creator = state.currentUser.displayName || 'ActLog';
     workbook.lastModifiedBy = state.currentUser.displayName || 'ActLog';
@@ -2571,7 +2738,7 @@ async function exportExcel() {
       exportDataCount: rows.length
     });
 
-    const periodTerm = getExportPeriodLabel();
+    const periodTerm = getExportPeriodLabel(filteredActivities);
     const fileName = periodTerm ? `DAILY REPORT - ${periodTerm}.xlsx` : 'DAILY REPORT.xlsx';
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
@@ -2596,13 +2763,7 @@ async function exportExcel() {
 
 function formatDateTime(dateValue) {
   const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-  return new Intl.DateTimeFormat('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date);
+  return historyDateTimeFormatter.format(date);
 }
 
 /* --- Catat Aktivitas Sebelumnya (manual entry) ---------------------------- */
@@ -2757,7 +2918,7 @@ function validateManualEntryDetails() {
   if (firstInvalidField) {
     firstInvalidField.element.classList.add('field-invalid');
     firstInvalidField.focusTarget?.focus({ preventScroll: true });
-    firstInvalidField.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstInvalidField.element.scrollIntoView({ behavior: scrollMotionBehavior(), block: 'center' });
     return false;
   }
 
@@ -3566,7 +3727,8 @@ function bindEvents() {
     ui.manualEntryRemarks.classList.remove('field-invalid');
   });
 
-  ui.searchInput.addEventListener('input', renderHistory);
+  // Typing in the search box used to rebuild the whole feed on every keystroke.
+  ui.searchInput.addEventListener('input', debounce(renderHistory, 250));
   ui.filterLocation.addEventListener('change', renderHistory);
   ui.filterWorkCode.addEventListener('change', renderHistory);
   ui.filterDateFrom.addEventListener('change', renderHistory);
@@ -3627,15 +3789,9 @@ function bindEvents() {
     }
   });
 
-  // Tapping anywhere on the list that is NOT the open card (its own content
-  // click handler closes it) swipes it back to normal.
-  ui.historyList.addEventListener('click', (event) => {
-    const openItem = ui.historyList.querySelector('.swipe-item.is-open');
-    if (openItem && !openItem.contains(event.target)) {
-      setSwipePosition(openItem, 0);
-      openSwipeActivityId = null;
-    }
-  });
+  // Tapping anywhere that is not the open card swipes it back to normal, and the
+  // swipe/edit/delete gestures live on the list so re-renders never re-bind them.
+  bindHistoryGestures();
   ui.editActivityForm.addEventListener('submit', handleEditActivitySubmit);
   ui.editActivityCancelBtn.addEventListener('click', hideEditActivityModal);
   ui.editActivityModal.addEventListener('click', (event) => {

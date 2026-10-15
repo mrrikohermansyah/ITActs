@@ -18,6 +18,10 @@
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Firebase ESM + ExcelJS CDN sockets are opened while the HTML parses, so
+         the module graph does not pay DNS/TLS a second time. -->
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -25,7 +29,12 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="./icon-192.svg" />
     <link rel="stylesheet" href="./style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" crossorigin="anonymous"></script>
+    <!-- app.js only discovers these once it has been fetched and parsed; preloading
+         them overlaps the four requests instead of chaining them. -->
+    <link rel="modulepreload" href="./config.js" />
+    <link rel="modulepreload" href="./auth.js" />
+    <link rel="modulepreload" href="./firestore.js" />
+    <link rel="modulepreload" href="./pickers.js" />
     <script type="module" src="./app.js"></script>
   </head>
   <body>
