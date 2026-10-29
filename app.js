@@ -2044,7 +2044,15 @@ function toProperCase(text) {
 }
 
 function getExportRows(filteredActivities = null) {
-  return (filteredActivities || getFilteredHistoryData()).map((item) => {
+  const source = filteredActivities || getFilteredHistoryData();
+
+  // Sort on the raw Firestore instant, never on the DD/MM/YYYY display string
+  // (string compare puts 02/10 before 15/09). Ascending: oldest day first, newest
+  // last; same-day rows fall out in start-time order. Array#sort is stable, so
+  // equal instants keep their relative order and no row is dropped.
+  const ordered = [...source].sort((a, b) => toMillis(a.startedAt) - toMillis(b.startedAt));
+
+  return ordered.map((item) => {
     const startDate = item.startedAt?.toDate ? item.startedAt.toDate() : new Date(item.startedAt);
     // ExcelJS derives the serial from UTC milliseconds, so rebuild the local
     // calendar day at UTC midnight: the cell holds a whole-day serial with no
