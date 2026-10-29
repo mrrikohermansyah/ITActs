@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'actlog-static-v12';
+const CACHE_VERSION = 'actlog-static-v13';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,8 +9,18 @@ const APP_SHELL = [
   './config.js',
   './firestore.js',
   './manifest.json',
+  './favicon.svg',
   './icon-192.svg',
-  './icon-512.svg'
+  './icon-512.svg',
+  './icon-maskable-192.svg',
+  './icon-maskable-512.svg',
+  './icons/favicon-16.png',
+  './icons/favicon-32.png',
+  './icons/apple-touch-icon.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-192.png',
+  './icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {

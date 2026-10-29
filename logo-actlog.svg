@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" width="300" height="96" role="img" aria-label="ActLog">
+  <title>ActLog</title>
+  <g transform="translate(16 16) scale(1)">
+    <rect width="64" height="64" rx="14" fill="#2563eb"/>
+    <path d="M15 49 L31 14 L39 31 L33 42 L49 26" fill="none" stroke="#ffffff" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="96" y="59" font-family="Inter, 'Segoe UI', system-ui, sans-serif" font-size="34" font-weight="800" letter-spacing="-0.6" fill="#172033">Act<tspan fill="#2563eb">Log</tspan></text>
+</svg>
