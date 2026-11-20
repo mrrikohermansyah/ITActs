@@ -182,6 +182,25 @@ let bottomNavWasMobile = bottomNavMedia.matches;
 let bottomNavLastScrollY = window.scrollY;
 let bottomNavFrameQueued = false;
 
+// Auto-hide scrollbar. One capture-phase listener on document sees every
+// scroll event — viewport and containers like .modal-card alike — so nothing
+// needs re-binding when views change. The CSS only consumes the class on
+// pointer devices; on touch the class is set but native overlay scrollbars
+// already auto-hide themselves.
+const SCROLLBAR_HIDE_DELAY_MS = 1200;
+let scrollbarHideTimer = null;
+
+function markScrollbarActive() {
+  document.documentElement.classList.add('scrollbar-active');
+  if (scrollbarHideTimer) {
+    clearTimeout(scrollbarHideTimer);
+  }
+  scrollbarHideTimer = setTimeout(() => {
+    document.documentElement.classList.remove('scrollbar-active');
+    scrollbarHideTimer = null;
+  }, SCROLLBAR_HIDE_DELAY_MS);
+}
+
 function toUppercaseInventory(value) {
   return String(value || '').toUpperCase();
 }
@@ -275,6 +294,16 @@ function setBottomNavHidden(isHidden) {
   document.body.classList.toggle('nav-hidden', isHidden);
 }
 
+// On the history view the shell is fixed and the feed container scrolls, so
+// window.scrollY stays at 0 there; the bottom-nav logic must read the feed.
+function getEffectiveScrollY() {
+  const shell = document.querySelector('#app-shell');
+  if (shell && shell.classList.contains('history-fixed-header')) {
+    return ui.historyList.scrollTop;
+  }
+  return window.scrollY;
+}
+
 function updateBottomNavOnScroll() {
   bottomNavFrameQueued = false;
 
@@ -282,7 +311,7 @@ function updateBottomNavOnScroll() {
     return;
   }
 
-  const currentScrollY = window.scrollY;
+  const currentScrollY = getEffectiveScrollY();
 
   if (currentScrollY <= BOTTOM_NAV_TOP_TOLERANCE) {
     bottomNavLastScrollY = currentScrollY;
@@ -312,14 +341,14 @@ function syncBottomNavWithViewport() {
   }
 
   bottomNavWasMobile = isMobile;
-  bottomNavLastScrollY = window.scrollY;
+  bottomNavLastScrollY = getEffectiveScrollY();
   setBottomNavHidden(false);
 }
 
 // Switching tabs changes the document height, which can clamp scrollY under us.
 // Re-anchoring here keeps the bar usable and stops it vanishing mid-navigation.
 function resetBottomNavForViewChange() {
-  bottomNavLastScrollY = window.scrollY;
+  bottomNavLastScrollY = getEffectiveScrollY();
   setBottomNavHidden(false);
 }
 
@@ -345,6 +374,15 @@ function setView(viewName) {
     viewMap[viewName].classList.remove('hidden');
   }
 
+  // The fixed history header CSS keys off this class and applies at every
+  // width; only the visual tweaks split per breakpoint.
+  const appShell = document.querySelector('#app-shell');
+  if (appShell) {
+    appShell.classList.toggle('history-fixed-header', viewName === 'history');
+  }
+  // View swaps must never animate the header morph; pass instant.
+  syncHistoryHeaderMerged(true);
+
   const titleMap = {
     loading: 'Memuat',
     auth: 'Masuk',
@@ -366,6 +404,104 @@ function setView(viewName) {
 
   // Runs after the panel swap so window.scrollY is read post-clamping.
   resetBottomNavForViewChange();
+}
+
+// History view (desktop + mobile): once the feed itself is scrolled, fuse
+// topbar + toolbar + resume into one slim header unit (.history-header-merged).
+// The fuse/un-fuse runs as a View Transition so the three blocks morph between
+// layouts instead of snapping; hidden tabs, reduced motion and unsupported
+// browsers get the plain instant class flip.
+// Merging fires past 12px and un-merging only below 4px: the dead zone stops
+// a slow flick around the threshold from flipping the layout (and starting
+// page-freezing transitions) repeatedly.
+const HISTORY_MERGE_AT = 12;
+const HISTORY_UNMERGE_AT = 4;
+let historyHeaderTransition = null;
+
+function syncHistoryHeaderMerged(instant) {
+  const shell = document.querySelector('#app-shell');
+  if (!shell) {
+    return;
+  }
+
+  const scrollTop = ui.historyList.scrollTop;
+  const isMerged = shell.classList.contains('history-header-merged');
+
+  if (!shell.classList.contains('history-fixed-header')) {
+    if (isMerged) {
+      shell.classList.remove('history-header-merged');
+    }
+    return;
+  }
+
+  const merged = isMerged
+    ? scrollTop >= HISTORY_UNMERGE_AT
+    : scrollTop > HISTORY_MERGE_AT;
+
+  if (merged === isMerged) {
+    return;
+  }
+
+  if (
+    instant ||
+    reducedMotionMedia.matches ||
+    typeof document.startViewTransition !== 'function'
+  ) {
+    shell.classList.toggle('history-header-merged', merged);
+    return;
+  }
+
+  // A reversed gesture mid-morph retargets immediately: the outgoing
+  // transition is skipped instead of queueing another freeze.
+  if (historyHeaderTransition) {
+    try {
+      historyHeaderTransition.skipTransition();
+    } catch (err) {
+      // Already finished or skipped.
+    }
+  }
+
+  const transition = document.startViewTransition(() => {
+    shell.classList.toggle('history-header-merged', merged);
+  });
+  historyHeaderTransition = transition;
+  transition.finished
+    .catch(() => {})
+    .then(() => {
+      if (historyHeaderTransition === transition) {
+        historyHeaderTransition = null;
+      }
+    });
+}
+
+// Wheeling over the fixed history header does nothing by default because the
+// page cannot scroll there; forward those rotations to the feed container so
+// the gesture stays continuous wherever the cursor sits. Passive on purpose:
+// a non-passive window listener demotes every wheel gesture (including the
+// ones over the list itself) to main-thread scrolling. Nothing is
+// preventDefault'ed — the header blocks have no native scroll of their own,
+// and gestures inside the list are left untouched by the target check.
+function forwardHeaderWheelToHistoryList(event) {
+  if (event.deltaY === 0) {
+    return;
+  }
+
+  const shell = document.querySelector('#app-shell');
+  if (!shell || !shell.classList.contains('history-fixed-header')) {
+    return;
+  }
+
+  const target = event.target;
+  if (target instanceof Element &&
+      target.closest('#history-list, .history-filter-panel, .modal:not(.hidden), .custom-picker-overlay')) {
+    return;
+  }
+
+  const factor =
+    event.deltaMode === 1 ? 33 :
+    event.deltaMode === 2 ? ui.historyList.clientHeight : 1;
+
+  ui.historyList.scrollTop += event.deltaY * factor;
 }
 
 function populateSelect(select, options, firstOption) {
@@ -1341,11 +1477,13 @@ function historyCardInnerHtml(item) {
         <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
         </svg>
+        <span class="swipe-action-label">Edit</span>
       </button>
       <button class="swipe-action swipe-delete-action" type="button" data-delete-activity-id="${escapeHtml(item.id)}" aria-label="Hapus aktivitas ${escapeHtml(displayedUserName)}" tabindex="-1">
         <svg class="swipe-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
         </svg>
+        <span class="swipe-action-label">Delete</span>
       </button>
     </div>
     <div class="feed-card card swipe-content">
@@ -1459,12 +1597,38 @@ function renderHistory() {
       ui.historyList.insertBefore(node, current || null);
     }
   });
+
+  syncHistoryActionFocusability();
 }
 
 // The reveal hides [Edit][Delete] behind the card: two 52px actions with a 10px
 // gap, 14px from the right edge, so the card must travel ~140px to uncover both.
 const SWIPE_THRESHOLD = 92;
 const SWIPE_MAX_OFFSET = 140;
+
+// Desktop shows [Edit][Delete] pinned inside each card instead of revealing
+// them by swipe. The breakpoint mirrors the app's 900px mobile layout, and the
+// CSS media query below uses the same condition, so exactly one mechanism is
+// ever active.
+const desktopHistoryActionsQuery = window.matchMedia('(min-width: 901px)');
+
+function syncHistoryActionFocusability() {
+  ui.historyList.querySelectorAll('.swipe-action').forEach((action) => {
+    if (desktopHistoryActionsQuery.matches) {
+      action.removeAttribute('tabindex');
+    } else {
+      action.setAttribute('tabindex', '-1');
+    }
+  });
+}
+
+desktopHistoryActionsQuery.addEventListener('change', () => {
+  // Crossing into desktop can strand a card mid-swipe; its inline transform is
+  // overridden by CSS, but resetting keeps the swipe state honest for the way
+  // back down to mobile widths.
+  closeSwipeItems();
+  syncHistoryActionFocusability();
+});
 
 function setSwipePosition(item, position, isDragging = false) {
   const content = item.querySelector('.swipe-content');
@@ -1890,6 +2054,10 @@ function bindHistoryGestures() {
   const list = ui.historyList;
 
   list.addEventListener('touchstart', (event) => {
+    if (desktopHistoryActionsQuery.matches) {
+      return;
+    }
+
     const item = event.target.closest('.swipe-item');
     if (!item) {
       return;
@@ -3626,6 +3794,10 @@ function bindEvents() {
     requestAnimationFrame(updateBottomNavOnScroll);
   }, { passive: true });
 
+  // Registered once here (bindEvents runs a single time at init), so the
+  // auto-hide scrollbar listener can never stack up across view switches.
+  document.addEventListener('scroll', markScrollbarActive, { passive: true, capture: true });
+
   window.addEventListener('resize', syncBottomNavWithViewport, { passive: true });
 
   document.querySelector('.tab-btn[data-auth-tab="login"]').addEventListener('click', () => {
@@ -3742,6 +3914,20 @@ function bindEvents() {
   ui.filterDateFrom.addEventListener('change', renderHistory);
   ui.filterDateTo.addEventListener('change', renderHistory);
   ui.filterStatus.addEventListener('change', renderHistory);
+
+  // The feed container is the scroll source in history mode: it drives both
+  // the header merge and (on mobile) the bottom-nav hide/show.
+  ui.historyList.addEventListener('scroll', () => {
+    syncHistoryHeaderMerged();
+
+    if (bottomNavFrameQueued || !bottomNavMedia.matches) {
+      return;
+    }
+    bottomNavFrameQueued = true;
+    requestAnimationFrame(updateBottomNavOnScroll);
+  }, { passive: true });
+
+  window.addEventListener('wheel', forwardHeaderWheelToHistoryList, { passive: true });
 
   ui.historyFilterToggle.addEventListener('click', () => {
     setHistoryFilterPanelOpen(ui.historyFilterPanel.hidden);

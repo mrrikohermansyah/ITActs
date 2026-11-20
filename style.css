@@ -45,6 +45,69 @@ button, input, select, textarea {
   font: inherit;
 }
 
+/* ---------- Auto-hide scrollbar (pointer devices only) ----------
+   Touch devices keep their native overlay scrollbars, which already
+   auto-hide; styling them here would only replace them with a fatter,
+   layout-consuming bar. On desktop the scrollbar box always reserves the
+   same 10px so content can never shift; only the thumb color fades, and
+   JS toggles --sb-thumb via .scrollbar-active on <html> (1.2s idle timer).
+   Hovering the thumb region re-reveals it through :hover directly.
+   scrollbar-gutter keeps the page width stable when document height
+   changes between tabs. */
+@media (hover: hover) and (pointer: fine) {
+  html {
+    --sb-thumb: transparent;
+    scrollbar-gutter: stable;
+  }
+
+  html.scrollbar-active {
+    --sb-thumb: rgba(100, 116, 139, 0.5);
+  }
+
+  /* Applies to the viewport scrollbar and every container scrollbar
+     (e.g. .modal-card); the custom property inherits from <html>. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--sb-thumb);
+    border-radius: 999px;
+    transition: background-color 350ms ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(100, 116, 139, 0.7);
+  }
+
+  /* Firefox cannot transition scrollbar colors and ignores the webkit
+     rules; toggling scrollbar-color jumps instead of fading, which is the
+     safest faithful fallback. */
+  @supports (-moz-appearance: none) {
+    html,
+    html .modal-card {
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+
+    html.scrollbar-active,
+    html.scrollbar-active .modal-card {
+      scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}
+
 button {
   cursor: pointer;
 }
@@ -1398,6 +1461,12 @@ body.nav-hidden .add-activity-fab {
   transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 0.8, 0.25, 1);
 }
 
+/* Mobile reveals icon-only blobs; the text labels appear in the desktop
+   layout further down. */
+.swipe-action-label {
+  display: none;
+}
+
 .swipe-delete-action:hover,
 .swipe-delete-action:focus-visible {
   background: #b91c1c;
@@ -1435,6 +1504,427 @@ body.nav-hidden .add-activity-fab {
     transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
     max-height 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
     margin-bottom 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Desktop (and wide tablets): the same Edit/Delete pair is pinned inside the
+   card's bottom-right instead of hidden behind a swipe. Same buttons, same
+   delegated click handlers — only the reveal mechanism changes. The 901px
+   breakpoint mirrors the app's max-width:900px mobile layout, and app.js
+   guards the touch swipe with the identical matchMedia query, so the two
+   mechanisms are never both active. */
+@media (min-width: 901px) {
+  .swipe-item .swipe-content {
+    /* Reserve the action row below the body: 38px button + 16px inset + gap,
+       so the pills never sit on top of the remarks. */
+    padding-bottom: 62px;
+    /* setSwipePosition may have left an inline transform from a smaller
+       viewport; the desktop layout must ignore it. */
+    transform: none !important;
+    transition: none;
+  }
+
+  .swipe-actions {
+    top: auto;
+    right: 18px;
+    bottom: 16px;
+    z-index: 2;
+    transform: none;
+    gap: 12px;
+  }
+
+  .swipe-item .swipe-action,
+  .swipe-item.is-ready .swipe-action,
+  .swipe-item.is-dragging .swipe-action,
+  .swipe-item.is-settling .swipe-action {
+    width: auto;
+    height: 38px;
+    padding: 0 14px;
+    gap: 8px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    animation: none;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+    transition:
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .swipe-item .swipe-action-icon {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none;
+  }
+
+  .swipe-action-label {
+    display: inline;
+  }
+
+  .swipe-item .swipe-action:hover {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
+  }
+
+  .swipe-item .swipe-action:active {
+    transform: translateY(1px) !important;
+  }
+}
+
+/* ---------- History fixed header (desktop + mobile) ----------
+   On the Riwayat page the topbar, filter toolbar and resume card form one
+   compact fixed header and only #history-list scrolls. The structural rules
+   are gated purely on the .history-fixed-header class that setView() toggles
+   on #app-shell, so they apply at every width; visual tweaks split per
+   breakpoint below. */
+#app-shell.history-fixed-header {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#app-shell.history-fixed-header .main-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The page never scrolls in this mode, so sticky would only offset the
+   sidebar by its 18px stick margin; static keeps its top flush with the
+   header. */
+#app-shell.history-fixed-header .sidebar {
+  position: static;
+}
+
+#app-shell.history-fixed-header .topbar {
+  flex: 0 0 auto;
+}
+
+#app-shell.history-fixed-header #history-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#app-shell.history-fixed-header #history-view .toolbar,
+#app-shell.history-fixed-header #history-view .history-resume {
+  flex: 0 0 auto;
+}
+
+#app-shell.history-fixed-header #history-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* A container scrollbar would reserve a 10px gutter and shift the feed
+     sideways out of line with the header; hidden, they read as one section. */
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#app-shell.history-fixed-header #history-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* .swipe-item carries min-height:1px, so inside a height-constrained flex
+   column the default flex-shrink would collapse every card to that floor
+   instead of letting the container scroll. */
+#app-shell.history-fixed-header #history-list > .swipe-item {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 901px) {
+  #app-shell.history-fixed-header {
+    padding-bottom: 24px;
+  }
+
+  #app-shell.history-fixed-header .topbar {
+    margin-bottom: 12px;
+    padding: 8px 18px;
+  }
+
+  #app-shell.history-fixed-header #history-view {
+    gap: 12px;
+  }
+
+  /* Visual order on desktop: toolbar above the resume card (DOM order stays
+     resume-first, which is what mobile renders). */
+  #app-shell.history-fixed-header #history-view .toolbar {
+    order: 1;
+    margin-bottom: 0;
+    padding: 10px 18px;
+  }
+
+  #app-shell.history-fixed-header #history-view .history-resume {
+    order: 2;
+    margin-bottom: 0;
+    padding: 10px 16px;
+  }
+
+  #app-shell.history-fixed-header #history-list {
+    order: 3;
+  }
+}
+
+/* Scrolled state — merged transpose: topbar, toolbar and resume fuse into one
+   slim header card, the filter opens as a dropdown overlay, and the feed
+   continues directly below. Nothing is dropped; the base rules below flow at
+   mobile width (single-column stack) and the >=901px override re-lays them
+   into the familiar two-column app header. */
+#app-shell.history-fixed-header.history-header-merged .main-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "topbar"
+    "toolbar"
+    "resume"
+    "list";
+}
+
+/* Lifts toolbar, resume and list into the header grid above. */
+#app-shell.history-fixed-header.history-header-merged #history-view {
+  display: contents;
+}
+
+#app-shell.history-fixed-header.history-header-merged .topbar {
+  grid-area: topbar;
+  margin: 0;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+#app-shell.history-fixed-header.history-header-merged .topbar h1 {
+  margin-bottom: 0;
+}
+
+#app-shell.history-fixed-header.history-header-merged .toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 14px;
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Children join the toolbar row directly once the header wrapper box is
+   dissolved. */
+#app-shell.history-fixed-header.history-header-merged .toolbar-header {
+  display: contents;
+}
+
+#app-shell.history-fixed-header.history-header-merged .toolbar-actions {
+  margin-left: auto;
+}
+
+/* The filter panel overlays the feed instead of growing the header; capped so
+   it never reaches under the bottom nav. */
+#app-shell.history-fixed-header.history-header-merged .history-filter-panel:not([hidden]) {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 12px;
+  right: 12px;
+  z-index: 30;
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+  margin-top: 0;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+#app-shell.history-fixed-header.history-header-merged .history-resume {
+  grid-area: resume;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+#app-shell.history-fixed-header.history-header-merged .history-resume-header,
+#app-shell.history-fixed-header.history-header-merged .history-resume-grid {
+  display: contents;
+}
+
+/* Chip look dropped: label + value sit on one baseline, text only. */
+#app-shell.history-fixed-header.history-header-merged .resume-stat {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* The header lost its gaps; keep breathing room above the feed. */
+#app-shell.history-fixed-header.history-header-merged #history-list {
+  grid-area: list;
+  margin-top: 10px;
+}
+
+@media (min-width: 901px) {
+  #app-shell.history-fixed-header.history-header-merged .main-panel {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "topbar toolbar"
+      "resume resume"
+      "list list";
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 52px;
+    padding: 6px 16px;
+    border-right: none;
+    border-radius: var(--radius) 0 0 0;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .topbar h1 {
+    font-size: 1.05rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .eyebrow {
+    margin-bottom: 2px;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .user-pill {
+    max-width: 240px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .toolbar {
+    min-height: 52px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 var(--radius) 0 0;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .toolbar-title {
+    font-size: 0.8rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-filter-panel:not([hidden]) {
+    left: auto;
+    right: 12px;
+    width: min(420px, calc(100% - 24px));
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-resume-title {
+    font-size: 0.78rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-scope {
+    padding: 3px 9px;
+    font-size: 0.66rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-stat-label {
+    font-size: 0.68rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-stat-value {
+    font-size: 0.82rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged #history-list {
+    margin-top: 12px;
+  }
+}
+
+/* Header morph: when .history-header-merged flips, syncHistoryHeaderMerged()
+   runs a View Transition so the three blocks animate between the two layouts
+   instead of snapping. The names live only while the history header is active,
+   so no other view ever joins the morph. */
+@media (prefers-reduced-motion: no-preference) {
+  #app-shell.history-fixed-header .topbar {
+    view-transition-name: hist-topbar;
+  }
+
+  #app-shell.history-fixed-header .toolbar {
+    view-transition-name: hist-toolbar;
+  }
+
+  #app-shell.history-fixed-header .history-resume {
+    view-transition-name: hist-resume;
+  }
+
+  ::view-transition-group(hist-topbar),
+  ::view-transition-group(hist-toolbar),
+  ::view-transition-group(hist-resume),
+  ::view-transition-old(hist-topbar),
+  ::view-transition-new(hist-topbar),
+  ::view-transition-old(hist-toolbar),
+  ::view-transition-new(hist-toolbar),
+  ::view-transition-old(hist-resume),
+  ::view-transition-new(hist-resume) {
+    animation-duration: 180ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* Only the three header blocks morph; a root cross-fade would ghost every
+     feed card and stretch the page freeze over the whole animation. */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+}
+
+/* Browsers without View Transitions fall back to transitioning the
+   re-typeset properties (size, padding, radius, colors). The layout jump
+   itself cannot be animated there, but the header still settles softly. */
+@supports not (view-transition-name: none) {
+  @media (prefers-reduced-motion: no-preference) {
+    #app-shell.history-fixed-header .topbar,
+    #app-shell.history-fixed-header .toolbar,
+    #app-shell.history-fixed-header .history-resume,
+    #app-shell.history-fixed-header .toolbar-title,
+    #app-shell.history-fixed-header .resume-scope,
+    #app-shell.history-fixed-header .resume-stat,
+    #app-shell.history-fixed-header .resume-stat-label,
+    #app-shell.history-fixed-header .resume-stat-value,
+    #app-shell.history-fixed-header .user-pill {
+      transition:
+        padding 220ms ease,
+        margin 220ms ease,
+        min-height 220ms ease,
+        gap 220ms ease,
+        border-radius 220ms ease,
+        background-color 220ms ease,
+        border-color 220ms ease,
+        font-size 220ms ease;
+    }
+  }
 }
 
 .feed-card {
@@ -1476,18 +1966,19 @@ body.nav-hidden .add-activity-fab {
   justify-content: center;
   border-radius: 10px;
   padding: 8px 10px;
-  font-weight: 700;
-  color: white;
+  font-weight: 800;
+  color: var(--primary);
   min-width: 52px;
 }
 
-.work-badge.hw { background: #3b82f6; }
-.work-badge.sw { background: #8b5cf6; }
-.work-badge.kb { background: #10b981; }
-.work-badge.ot { background: #f59e0b; }
-.work-badge.nw { background: #06b6d4; }
-.work-badge.mv { background: #ef4444; }
-.work-badge.dr { background: #64748b; }
+/* Coloured text only, no background chip. */
+.work-badge.hw { color: #3b82f6; }
+.work-badge.sw { color: #8b5cf6; }
+.work-badge.kb { color: #10b981; }
+.work-badge.ot { color: #f59e0b; }
+.work-badge.nw { color: #06b6d4; }
+.work-badge.mv { color: #ef4444; }
+.work-badge.dr { color: #64748b; }
 
 .meta-grid {
   min-width: 0;
