@@ -171,6 +171,8 @@ const BOTTOM_NAV_SCROLL_THRESHOLD = 8;
 // Fractional scroll offsets settle just above 0 on iOS; a small tolerance keeps
 // the "at the top the bar is always visible" rule from getting stuck.
 const BOTTOM_NAV_TOP_TOLERANCE = 2;
+// Scrolling stops away from the top: the bar re-tucks after this idle delay.
+const BOTTOM_NAV_IDLE_HIDE_MS = 1300;
 
 const bottomNavMedia = window.matchMedia(BOTTOM_NAV_MEDIA_QUERY);
 // Honored by the CSS media block and by the JS scrolls below, which CSS cannot
@@ -181,6 +183,7 @@ let bottomNavHidden = false;
 let bottomNavWasMobile = bottomNavMedia.matches;
 let bottomNavLastScrollY = window.scrollY;
 let bottomNavFrameQueued = false;
+let bottomNavIdleTimer = null;
 
 // Auto-hide scrollbar. One capture-phase listener on document sees every
 // scroll event — viewport and containers like .modal-card alike — so nothing
@@ -304,10 +307,38 @@ function getEffectiveScrollY() {
   return window.scrollY;
 }
 
+function clearBottomNavIdleTimer() {
+  if (bottomNavIdleTimer) {
+    clearTimeout(bottomNavIdleTimer);
+    bottomNavIdleTimer = null;
+  }
+}
+
+// Rule 3: scrolling stopped outside the top of the feed → re-tuck the bar
+// after an idle delay. Re-arming on every scroll frame means the timer only
+// starts once movement actually ceases.
+function scheduleBottomNavIdleHide() {
+  clearBottomNavIdleTimer();
+  bottomNavIdleTimer = setTimeout(() => {
+    bottomNavIdleTimer = null;
+    // A rotation to desktop or a tab switch can land between the last scroll
+    // and the timeout; both paths already cleared/re-armed, but re-check here.
+    if (!bottomNavMedia.matches) {
+      return;
+    }
+    if (getEffectiveScrollY() <= BOTTOM_NAV_TOP_TOLERANCE) {
+      return;
+    }
+    bottomNavLastScrollY = getEffectiveScrollY();
+    setBottomNavHidden(true);
+  }, BOTTOM_NAV_IDLE_HIDE_MS);
+}
+
 function updateBottomNavOnScroll() {
   bottomNavFrameQueued = false;
 
   if (!bottomNavMedia.matches) {
+    clearBottomNavIdleTimer();
     return;
   }
 
@@ -316,6 +347,8 @@ function updateBottomNavOnScroll() {
   if (currentScrollY <= BOTTOM_NAV_TOP_TOLERANCE) {
     bottomNavLastScrollY = currentScrollY;
     setBottomNavHidden(false);
+    // Rule 4: at the top the bar is always visible — no idle hide to arm.
+    clearBottomNavIdleTimer();
     return;
   }
 
@@ -324,11 +357,13 @@ function updateBottomNavOnScroll() {
   // lastScrollY is deliberately not advanced here: sub-threshold movement keeps
   // accumulating until the gesture is clearly directional in one way or the other.
   if (Math.abs(delta) < BOTTOM_NAV_SCROLL_THRESHOLD) {
+    scheduleBottomNavIdleHide();
     return;
   }
 
   bottomNavLastScrollY = currentScrollY;
   setBottomNavHidden(delta > 0);
+  scheduleBottomNavIdleHide();
 }
 
 // Rotating a tablet can cross the 900px breakpoint while the bar is tucked away.
@@ -342,6 +377,7 @@ function syncBottomNavWithViewport() {
 
   bottomNavWasMobile = isMobile;
   bottomNavLastScrollY = getEffectiveScrollY();
+  clearBottomNavIdleTimer();
   setBottomNavHidden(false);
   // Crossing into mobile means the history header must snap to its always-on
   // compact state; crossing out must re-evaluate it from the feed scroll.
@@ -352,6 +388,7 @@ function syncBottomNavWithViewport() {
 // Re-anchoring here keeps the bar usable and stops it vanishing mid-navigation.
 function resetBottomNavForViewChange() {
   bottomNavLastScrollY = getEffectiveScrollY();
+  clearBottomNavIdleTimer();
   setBottomNavHidden(false);
 }
 
