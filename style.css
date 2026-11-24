@@ -1632,6 +1632,14 @@ body.nav-hidden .add-activity-fab {
   display: none;
 }
 
+/* While the filter overlay is open, lift the toolbar above the feed. The
+   toolbar carries a view-transition-name (its own stacking context), so the
+   panel's own z-index cannot escape it; grid items honor z-index even with
+   position: static. */
+#app-shell.history-fixed-header .toolbar.is-filter-open {
+  z-index: 31;
+}
+
 /* .swipe-item carries min-height:1px, so inside a height-constrained flex
    column the default flex-shrink would collapse every card to that floor
    instead of letting the container scroll. */
@@ -1858,6 +1866,151 @@ body.nav-hidden .add-activity-fab {
 
   #app-shell.history-fixed-header.history-header-merged #history-list {
     margin-top: 12px;
+  }
+}
+
+/* ---------- Mobile history: always-compact header ----------
+   syncHistoryHeaderMerged() pins .history-header-merged on at <=900px, so
+   this slim layout is the only history header mobile ever renders: no
+   merge/un-merge morph can interrupt a touch scroll mid-gesture. The
+   toolbar card dissolves into the topbar row (only the filter and Excel
+   icons remain; the filter panel opens as an overlay anchored to the
+   panel, not the slim toolbar column), the resume collapses to one
+   abbreviated line, and the feed's bottom space follows the auto-hidden
+   bottom nav. The >=901px rules above keep desktop untouched. */
+@media (max-width: 900px) {
+  #app-shell.history-fixed-header {
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+    transition: padding-bottom 280ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* Bottom nav tucked away: the feed reclaims its strip and ends ~5px
+     above the viewport edge (safe area still respected). */
+  body.nav-hidden #app-shell.history-fixed-header {
+    padding-bottom: calc(5px + env(safe-area-inset-bottom));
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .main-panel {
+    /* Positioning anchor for the filter overlay (see below). */
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "topbar toolbar"
+      "resume resume"
+      "list list";
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .topbar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    margin: 0;
+    padding: 6px 12px;
+    border-right: none;
+    border-radius: var(--radius) 0 0 0;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .eyebrow {
+    display: none;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .topbar h1 {
+    font-size: 0.95rem;
+    /* No nowrap: "Riwayat Aktivitas" wraps to two short lines inside the
+       fixed 48px row instead of truncating the page identity. */
+    overflow-wrap: anywhere;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .user-pill {
+    align-self: center;
+    max-width: 40%;
+    padding: 5px 10px;
+    font-size: 0.74rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .toolbar {
+    /* Static, so the overlay resolves against .main-panel instead. */
+    position: static;
+    align-self: stretch;
+    min-height: 48px;
+    padding: 4px 10px;
+    border-top: 1px solid var(--border);
+    border-radius: 0 var(--radius) 0 0;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .toolbar-title {
+    display: none;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-filter-toggle {
+    flex-basis: 40px;
+    width: 40px;
+    height: 40px;
+    font-size: 1.25rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .excel-export-btn {
+    min-height: 40px;
+    padding: 0 12px;
+  }
+
+  /* Icon-only export keeps the topbar column wide enough for the title to
+     stay on one line; the title attribute still names the button. */
+  #app-shell.history-fixed-header.history-header-merged .excel-export-label {
+    display: none;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-filter-panel:not([hidden]) {
+    /* Just under the topbar/toolbar row; full content width. */
+    top: 60px;
+    left: 12px;
+    right: 12px;
+    max-height: calc(100dvh - 190px);
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-resume {
+    gap: 4px 6px;
+    min-height: 34px;
+    padding: 6px 8px;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .history-resume-title {
+    display: none;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-stat {
+    gap: 3px;
+  }
+
+  /* Abbreviated labels (TA/TD/TM): the full text stays in the DOM for
+     screen readers and in title= as a tooltip; font-size:0 collapses only
+     the visual text and ::after repaints the short form. */
+  #app-shell.history-fixed-header.history-header-merged .resume-stat-label {
+    font-size: 0;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-stat-label::after {
+    content: attr(data-short);
+    font-size: 0.62rem;
+    font-weight: 700;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-stat-value {
+    font-size: 0.68rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged .resume-scope {
+    padding: 2px 7px;
+    font-size: 0.6rem;
+  }
+
+  #app-shell.history-fixed-header.history-header-merged #history-list {
+    margin-top: 8px;
   }
 }
 

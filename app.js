@@ -343,6 +343,9 @@ function syncBottomNavWithViewport() {
   bottomNavWasMobile = isMobile;
   bottomNavLastScrollY = getEffectiveScrollY();
   setBottomNavHidden(false);
+  // Crossing into mobile means the history header must snap to its always-on
+  // compact state; crossing out must re-evaluate it from the feed scroll.
+  syncHistoryHeaderMerged(true);
 }
 
 // Switching tabs changes the document height, which can clamp scrollY under us.
@@ -434,9 +437,18 @@ function syncHistoryHeaderMerged(instant) {
     return;
   }
 
-  const merged = isMerged
-    ? scrollTop >= HISTORY_UNMERGE_AT
-    : scrollTop > HISTORY_MERGE_AT;
+  // Mobile (same breakpoint as the bottom nav): the compact merged header is
+  // ALWAYS on. Flipping merge state mid-gesture would resize the feed and run
+  // a page-freezing View Transition while a finger is down, which is what
+  // forced users to lift their finger to keep scrolling. Desktop keeps the
+  // scroll-triggered morph because wheel scrolling tolerates it.
+  const isMobileLayout = bottomNavMedia.matches;
+
+  const merged = isMobileLayout
+    ? true
+    : isMerged
+      ? scrollTop >= HISTORY_UNMERGE_AT
+      : scrollTop > HISTORY_MERGE_AT;
 
   if (merged === isMerged) {
     return;
@@ -444,6 +456,7 @@ function syncHistoryHeaderMerged(instant) {
 
   if (
     instant ||
+    isMobileLayout ||
     reducedMotionMedia.matches ||
     typeof document.startViewTransition !== 'function'
   ) {
@@ -1262,6 +1275,10 @@ function updateHistoryFilterIndicator() {
 function setHistoryFilterPanelOpen(isOpen) {
   ui.historyFilterPanel.hidden = !isOpen;
   ui.historyFilterPanel.classList.toggle('is-open', isOpen);
+  // The toolbar carries a view-transition-name, which makes it its own
+  // stacking context: without lifting it above the feed, the overlay panel
+  // paints behind the cards it is supposed to cover.
+  ui.historyToolbar.classList.toggle('is-filter-open', isOpen);
   ui.historyFilterToggle.setAttribute('aria-expanded', String(isOpen));
   ui.historyFilterToggle.setAttribute('aria-label', isOpen ? 'Tutup filter riwayat' : 'Buka filter riwayat');
   ui.historyFilterToggle.title = isOpen ? 'Tutup filter' : 'Filter';
